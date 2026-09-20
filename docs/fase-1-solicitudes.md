@@ -2,7 +2,7 @@
 
 ## Estado de esta entrega
 
-Versión candidata en rama técnica. No se aplicó la migración a Supabase, no se modificó `main` y no se desplegó en Vercel.
+Versión candidata en la rama técnica `work/fase1-solicitudes-recuperada`. La migración aditiva ya fue aplicada en Supabase y la rama cuenta con un preview de Vercel en estado `READY`. `main` y el frontend de producción permanecen sin cambios.
 
 La entrega implementa el cambio mínimo seguro definido en el Documento Maestro: solicitud unificada del vendedor, revisión administrativa y base transaccional de cliente, venta, cuenta y cuotas. El alcance es exclusivamente Hogar y Celulares. Motos continúa en REST Motos.
 
@@ -29,12 +29,12 @@ La entrega implementa el cambio mínimo seguro definido en el Documento Maestro:
 
 ## Orden de liberación propuesto
 
-1. Confirmar backup o exportación reciente y elegir una ventana de baja actividad.
-2. Aplicar `supabase/migrations/20260917032419_app_integral_fase1_solicitudes.sql` mediante el flujo de migraciones.
-3. Verificar que PostgREST exponga tablas y RPC, y revisar asesores de seguridad y rendimiento.
-4. Ejecutar la aceptación controlada con usuarios de prueba y productos reales no comprometidos.
-5. Publicar juntos `index.html` y `sw.js` sólo cuando todas las pruebas pasen.
-6. Observar solicitudes, errores y cupo durante el período inicial sin migrar cartera de G-CRED.
+1. Completado: se aplicó `supabase/migrations/20260920211644_app_integral_fase1_solicitudes.sql` mediante el flujo de migraciones.
+2. Completado: se verificaron exposición en PostgREST, permisos, RLS y asesores de seguridad y rendimiento.
+3. Completado: se ejecutó una aceptación transaccional en la base real con `ROLLBACK`, sin dejar clientes, ventas, cuentas ni cuotas de prueba.
+4. Pendiente: inspeccionar visualmente el preview en navegador real e iniciar una aceptación controlada con usuarios de prueba.
+5. Pendiente: publicar juntos `index.html` y `sw.js` sólo cuando todas las pruebas pasen y exista autorización expresa.
+6. Después de publicar: observar solicitudes, errores y cupo durante el período inicial sin migrar cartera de G-CRED.
 
 ## Lista de aceptación previa a Producción
 
@@ -60,9 +60,14 @@ Validación ejecutada el 20 de septiembre de 2026 sobre la candidata, sin escrib
 - Se comprobó que la oportunidad vinculada queda cerrada únicamente después de aprobar.
 - La prueba de integración del frontend completó 13 controles del flujo vendedor/administrador, incluida la protección contra contenido HTML, el bloqueo de Motos, el vínculo con oportunidades y la presentación correcta de operaciones no financiadas.
 - El JavaScript embebido, el service worker y la revisión de whitespace finalizaron sin errores.
-- En Producción se confirmó que las cuatro tablas nuevas todavía no existen; por lo tanto, esta validación no alteró datos reales.
+- La migración quedó registrada en Supabase como `20260920211644_app_integral_fase1_solicitudes`.
+- Las cuatro tablas nuevas quedaron vacías, con RLS activo y sólo permiso de lectura para usuarios autenticados; las escrituras continúan encapsuladas en RPC.
+- PostgREST reconoce tablas y RPC: las solicitudes anónimas reciben denegación de permisos en lugar de recurso inexistente.
+- La aceptación transaccional sobre la base real verificó envío y aprobación idempotentes, contado sin saldo ni cuotas, financiación con tres cuotas, corrección y reenvío, rechazo irreversible, aislamiento RLS, auditoría inmutable y rollback ante DNI histórico ambiguo.
+- Toda la aceptación se revirtió al terminar: quedaron cero solicitudes y cero ventas de prueba persistidas.
+- Los asesores sólo señalan como advertencias nuevas las tres RPC `SECURITY DEFINER` expuestas deliberadamente a usuarios autenticados. Cada RPC valida internamente vendedor o Administración, usa `search_path` vacío, niega acceso anónimo y evita escritura directa en las tablas.
 
-La inspección visual en navegador real sigue siendo una puerta obligatoria de la candidata: el entorno local no pudo descargar Chromium. Debe realizarse en un preview aislado antes de autorizar Producción.
+La inspección visual en navegador real sigue siendo una puerta obligatoria de la candidata. Debe completarse en el preview antes de autorizar el cambio de `main` y la publicación del frontend.
 
 ## Reversión segura
 

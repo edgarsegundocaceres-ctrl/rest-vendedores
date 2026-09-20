@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- REST v1.1.0 candidato · Solicitudes de venta Hogar/Celulares -->
+<!-- REST v1.1.1 candidato · Solicitudes con planes automáticos Hogar/Celulares -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -64,8 +64,9 @@ body.client-mode .wrap{max-width:620px;padding:0 14px 90px}
 .ref-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0}.ref-card{border:1px solid #dfe7f3;border-radius:16px;padding:14px;margin:10px 0;background:#fff}.ref-card-head{display:flex;gap:10px;justify-content:space-between;align-items:flex-start}.ref-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.ref-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px;margin:9px 0}.ref-sale-select{min-width:220px}.badge-pending{background:#fff4d6;color:#7a5200}.badge-ok{background:#e7f6ec;color:#146b35}.badge-bad{background:#fdebec;color:#8c2630}.badge-info{background:#eaf2ff;color:#104b98}
 @media(max-width:600px){.ref-card-head{display:block}.ref-meta{display:block}.ref-meta>div{margin:5px 0}.ref-actions .btn,.ref-actions select{width:100%}.ref-sale-select{min-width:0}.app-head-row{align-items:flex-start}.app-head-actions{display:flex;gap:6px;flex-direction:column;flex:0 0 auto}.app-head-actions .btn{width:auto}}
 
-/* REST v1.1.0 · Solicitudes de venta */
+/* REST v1.1.1 · Solicitudes de venta con planes automáticos */
 .request-nav-badge{background:#d8394a;color:#fff;margin-left:4px;padding:3px 7px}.request-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px}.request-form-grid .wide{grid-column:1/-1}.request-field label{display:block;font-size:12px;font-weight:750;color:#657187;margin:7px 2px 0}.request-finance-summary{border:1px solid #cbdff8;background:#f5f9ff;border-radius:14px;padding:13px;margin:10px 0;line-height:1.45}.request-finance-summary.valid{border-color:#9cd2ae;background:#f3fbf6}.request-finance-summary.invalid{border-color:#e5a9af;background:#fff7f8;color:#8c2630}.request-card{border:1px solid #dfe7f3;border-radius:16px;padding:14px;margin:10px 0;background:#fff}.request-card-head{display:flex;gap:10px;justify-content:space-between;align-items:flex-start}.request-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:7px;margin:10px 0}.request-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.request-status-pendiente{background:#fff4d6;color:#7a5200}.request-status-correccion_solicitada{background:#fff0df;color:#924f00}.request-status-aprobada{background:#e7f6ec;color:#146b35}.request-status-rechazada,.request-status-anulada{background:#fdebec;color:#8c2630}.request-note{background:#fff7e6;border-radius:10px;padding:9px;margin-top:8px}.request-section-title{margin:18px 0 5px}.btn:disabled{opacity:.6;cursor:not-allowed}
+.request-plan-help{display:block;grid-column:1/-1;margin:0 2px 6px;line-height:1.35}.request-auto-field{background:#eef5ff;color:#20395e;font-weight:700}.request-plan-loading{opacity:.72}
 @media(max-width:700px){.request-form-grid{grid-template-columns:1fr}.request-form-grid .wide{grid-column:auto}.request-card-head{display:block}.request-actions .btn{width:100%}.request-meta{grid-template-columns:1fr}}
 
 </style>
@@ -390,33 +391,59 @@ function renderRecommended(){if(!$('sellerRecommended'))return;let picks=(allCat
 function setupCategoryChips(){document.querySelectorAll('.category-chips [data-cat]').forEach(b=>b.onclick=()=>{catalogCategory.value=b.dataset.cat;document.querySelectorAll('.category-chips [data-cat]').forEach(x=>x.classList.toggle('active',x===b));refreshSubcategories();renderCatalog()})}
 function renderCatalog(){let q=(catalogSearch.value||'').toLowerCase().trim(),cat=catalogCategory.value,sub=catalogSubcategory.value;let p=allCatalog.filter(x=>(!cat||x.categoria===cat)&&(!sub||x.subcategoria===sub)&&(!q||(x.nombre+' '+(x.subcategoria||'')+' '+x.categoria).toLowerCase().includes(q)));catalogCount.textContent=`${p.length} producto${p.length===1?'':'s'} encontrados`;sellerProducts.innerHTML=p.map(x=>productCard(x,false)).join('')||'<p class="muted">No encontré productos con ese filtro.</p>'}
 catalogSearch.addEventListener('input',renderCatalog);catalogCategory.addEventListener('change',()=>{refreshSubcategories();renderCatalog()});catalogSubcategory.addEventListener('change',renderCatalog);
-async function openProduct(id){let p=allCatalog.find(x=>x.id===id);if(!p)return;selectedCatalogProduct=p;currentQuote=null;let {data:q,error}=await sb.rpc('cotizar_producto',{p_producto_id:id});if(error){productDetail.innerHTML=`<b>${esc(p.nombre)}</b><p class="muted">No pude abrir la calculadora: ${esc(error.message)}</p>`;productDetail.classList.remove('hide');return}p._quote=q;renderProductDetail(p);productDetail.classList.remove('hide');productDetail.scrollIntoView({behavior:'smooth',block:'start'})}
+const roundMoney=n=>Math.round((Number(n||0)+Number.EPSILON)*100)/100;
+async function ensureProductQuote(p){if(p?._quote)return p._quote;let {data,error}=await sb.rpc('cotizar_producto',{p_producto_id:p?.id});if(error)throw error;p._quote=data||{};return p._quote}
+function quotePlanCounts(p,qr,mode){
+  if(mode==='Contado')return [0];
+  if(mode==='Tarjeta Sol')return [2,3,4,5,6,7,8,9,10,11,12,18,24].filter(n=>solCoef[n]);
+  if(mode==='Crédito personal'){const rows=p?.categoria==='motos'?qr?.credito_personal?.opciones:qr?.credito_personal;return (Array.isArray(rows)?rows:[]).map(x=>Number(x.cuotas)).filter(Boolean)}
+  if(mode==='Anticipo + cuotas mensuales')return (qr?.mensual?.cuotas||[]).map(Number).filter(Boolean);
+  if(mode==='Anticipo + cuotas semanales')return (qr?.semanal?.cuotas||[]).map(Number).filter(Boolean);
+  if(mode==='Plan entrega cuota 3')return [9];
+  return [];
+}
+function buildPaymentPlan(p,qr,mode,count,advance){
+  const cash=Number(p?.precio_contado||0),n=Number(count||0),a=Number(advance||0);
+  if(!(cash>0))return {error:'El producto no tiene un precio de contado válido.'};
+  if(mode==='Contado')return {title:'Contado',lines:[['Producto',p.nombre]],total:roundMoney(cash),installment:null,down:0,paymentText:'Contado',plan:{formaPago:'Contado',count:0,value:0,frequency:'unico'}};
+  if(mode==='Tarjeta Sol'){
+    const coef=solCoef[n];if(!coef)return {error:'No hay coeficiente configurado para esa cantidad de cuotas.'};
+    const total=roundMoney(cash*coef),value=roundMoney(total/n);return {title:`Tarjeta Sol · ${n} cuotas`,lines:[['Contado',money(cash)],['Total',money(total)]],total,installment:`${n} cuotas de ${money(value)}`,down:0,paymentText:`Tarjeta Sol · ${n} cuotas de ${money(value)}`,plan:{formaPago:'Tarjeta Sol',count:n,value,frequency:'mensual'}};
+  }
+  if(mode==='Crédito personal'){
+    if(p.categoria==='motos'){
+      const min=Number(qr?.credito_personal?.anticipo_min||0);if(!a||a<min)return {error:'Anticipo mínimo: '+money(min)};if(a>=cash)return {error:'El anticipo debe ser menor al contado.'};
+      const balance=cash-a,totalBalance=roundMoney(balance*(1+0.09*n)),total=roundMoney(a+totalBalance),value=roundMoney(totalBalance/n);return {title:`Crédito personal · ${n} cuotas`,lines:[['Anticipo',money(a)],['Saldo',money(balance)],['Total operación',money(total)]],total,installment:`${n} cuotas de ${money(value)}`,down:roundMoney(a),paymentText:`Crédito personal · anticipo ${money(a)} + ${n} cuotas de ${money(value)}`,plan:{formaPago:'Crédito personal',count:n,value,frequency:'mensual'}};
+    }
+    const option=(Array.isArray(qr?.credito_personal)?qr.credito_personal:[]).find(x=>Number(x.cuotas)===n);if(!option)return {error:'Ese plan de crédito ya no está disponible.'};
+    const total=roundMoney(option.total),value=roundMoney(option.cuota);return {title:`Crédito personal · ${n} cuotas`,lines:[['Contado',money(cash)],['Total financiado',money(total)]],total,installment:`${n} cuotas de ${money(value)}`,down:0,paymentText:`Crédito personal · ${n} cuotas de ${money(value)}`,plan:{formaPago:'Crédito personal',count:n,value,frequency:'mensual'}};
+  }
+  if(mode==='Anticipo + cuotas mensuales'||mode==='Anticipo + cuotas semanales'){
+    const weekly=mode.includes('semanales'),cfg=weekly?qr?.semanal:qr?.mensual,min=Number(cfg?.anticipo_min||0),rate=Number(cfg?.tasa||0),frequency=weekly?'semanal':'mensual';
+    if(!cfg||!quotePlanCounts(p,qr,mode).includes(n))return {error:'Ese plan ya no está disponible.'};if(!a||a<min)return {error:'Anticipo mínimo: '+money(min)};if(a>=cash)return {error:'El anticipo debe ser menor al contado.'};
+    const balance=cash-a,totalBalance=roundMoney(balance*(1+rate*n)),total=roundMoney(a+totalBalance),value=roundMoney(totalBalance/n),period=weekly?'semanas':'cuotas mensuales';
+    return {title:`Anticipo + ${n} ${period}`,lines:[['Anticipo',money(a)],['Saldo',money(balance)],['Total operación',money(total)]],total,installment:`${n} cuotas de ${money(value)}`,down:roundMoney(a),paymentText:`Anticipo ${money(a)} + ${n} cuotas ${weekly?'semanales':'mensuales'} de ${money(value)}`,plan:{formaPago:mode,count:n,value,frequency}};
+  }
+  if(mode==='Plan entrega cuota 3'){
+    const total=Number(qr?.entrega_pactada?.total||0),value=Number(qr?.entrega_pactada?.cuota||0);if(!total)return {error:'Plan no disponible para este producto.'};
+    return {title:'Plan entrega cuota 3',lines:[['Total del plan',money(total)],['Entrega','Al abonar cuota 3']],total:roundMoney(total),installment:`9 cuotas de ${money(value)}`,down:0,paymentText:`Plan entrega cuota 3 · 9 cuotas de ${money(value)}`,plan:{formaPago:'Entrega pactada',count:0,value:0,frequency:'unico'}};
+  }
+  return {error:'Elegí una modalidad con un plan disponible.'};
+}
+async function openProduct(id){let p=allCatalog.find(x=>x.id===id);if(!p)return;selectedCatalogProduct=p;currentQuote=null;try{await ensureProductQuote(p)}catch(error){productDetail.innerHTML=`<b>${esc(p.nombre)}</b><p class="muted">No pude abrir la calculadora: ${esc(error.message)}</p>`;productDetail.classList.remove('hide');return}renderProductDetail(p);productDetail.classList.remove('hide');productDetail.scrollIntoView({behavior:'smooth',block:'start'})}
 function renderProductDetail(p){let img=p.imagen_url?`<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}">`:`<div class="detail-ph">Sin foto</div>`;let modes=p.categoria==='motos'?['Contado','Crédito personal','Tarjeta Sol','Plan entrega cuota 3']:['Contado','Crédito personal','Anticipo + cuotas mensuales','Anticipo + cuotas semanales','Tarjeta Sol'];productDetail.innerHTML=`<div class="detail-head">${img}<div><span class="badge">${esc(p.categoria)}</span><h3>${esc(p.nombre)}</h3>${p.subcategoria?`<div class="muted">${esc(p.subcategoria)}</div>`:''}<div class="quote-main">Contado ${money(p.precio_contado)}</div></div></div><hr style="border:0;border-top:1px solid #e1e8f2;margin:16px 0"><h3>Calcular financiación</h3><div class="quote-grid"><div><label>Forma de pago</label><select id="qMode" class="input">${modes.map(m=>`<option>${m}</option>`).join('')}</select></div><div id="qInstallWrap"><label>Cuotas</label><select id="qInstall" class="input"></select></div><div id="qAdvanceWrap" class="hide"><label>Anticipo</label><input id="qAdvance" class="input" inputmode="numeric" type="number" placeholder="Ingresar anticipo"></div></div><button id="qCalc" class="btn">CALCULAR</button><div id="qResult" class="quote-result"><div class="muted">Elegí una modalidad y calculá.</div></div><button id="qLoadSale" class="btn good full hide">CARGAR ESTA VENTA</button><button id="qClose" class="btn btn2 full">Cerrar ficha</button>`;qMode.addEventListener('change',setupQuoteControls);qInstall.addEventListener('change',()=>{currentQuote=null;qLoadSale.classList.add('hide')});qAdvance.addEventListener('input',()=>{currentQuote=null;qLoadSale.classList.add('hide')});qCalc.addEventListener('click',calculateQuote);qLoadSale.addEventListener('click',loadQuoteIntoSale);qClose.addEventListener('click',()=>productDetail.classList.add('hide'));setupQuoteControls()}
-function setupQuoteControls(){let p=selectedCatalogProduct,m=qMode.value,opts=[];qAdvanceWrap.classList.add('hide');qInstallWrap.classList.remove('hide');if(m==='Contado'){qInstallWrap.classList.add('hide')}else if(m==='Crédito personal'){opts=p.categoria==='motos'?[3,6,9]:[6,9];if(p.categoria==='motos')qAdvanceWrap.classList.remove('hide')}else if(m==='Anticipo + cuotas mensuales'){opts=[6,9,12];qAdvanceWrap.classList.remove('hide')}else if(m==='Anticipo + cuotas semanales'){opts=[12,16,20];qAdvanceWrap.classList.remove('hide')}else if(m==='Tarjeta Sol'){opts=[2,3,4,5,6,7,8,9,10,11,12,18,24]}else if(m==='Plan entrega cuota 3'){opts=[9]}qInstall.innerHTML=opts.map(n=>`<option value="${n}">${n}</option>`).join('');currentQuote=null;qLoadSale.classList.add('hide');qResult.innerHTML='<div class="muted">Presioná CALCULAR.</div>'}
+function setupQuoteControls(){let p=selectedCatalogProduct,m=qMode.value,opts=quotePlanCounts(p,p?._quote||{},m);qAdvanceWrap.classList.toggle('hide',!((m==='Crédito personal'&&p?.categoria==='motos')||m.startsWith('Anticipo +')));qInstallWrap.classList.toggle('hide',m==='Contado');qInstall.innerHTML=opts.filter(Boolean).map(n=>`<option value="${n}">${n}</option>`).join('');currentQuote=null;qLoadSale.classList.add('hide');qResult.innerHTML='<div class="muted">Presioná CALCULAR.</div>'}
 function qshow(title,lines,total,installment,downValue,paymentText,plan={}){let est=estimatedCommission(total),pct=commissionPct();qResult.innerHTML=`<div class="muted">${esc(title)}</div><div class="quote-main">${installment?esc(installment):money(total)}</div><div class="quote-lines">${lines.map(([a,b])=>`<div class="quote-line"><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}<div class="quote-line"><span>Tu comisión si se acepta</span><b>${pct}% · ${money(est)}</b></div></div>`;currentQuote={total:Number(total)||0,down:Number(downValue)||0,paymentText,notes:lines.map(x=>x.join(': ')).join(' · '),estimatedCommission:est,commissionPct:pct,title,plan};qLoadSale.classList.remove('hide');qResult.insertAdjacentHTML('beforeend','<button class="btn btn2 full" onclick="shareCurrentQuote()">COMPARTIR COTIZACIÓN</button>')}
 function qerr(msg){qResult.innerHTML=`<div style="color:#a52b35;font-weight:700">${esc(msg)}</div>`;currentQuote=null;qLoadSale.classList.add('hide')}
-function calculateQuote(){
-  let p=selectedCatalogProduct,m=qMode.value,n=Number(qInstall.value||0),cash=Number(p.precio_contado),a=Number(qAdvance.value||0),qr=p._quote||{};
-  if(m==='Contado')return qshow('Contado',[['Producto',p.nombre]],cash,null,0,'Contado',{formaPago:'Contado',count:0,value:0,frequency:'unico'});
-  if(m==='Tarjeta Sol'){let coef=solCoef[n];if(!coef)return qerr('No hay coeficiente configurado.');let total=cash*coef,cuota=total/n;return qshow(`Tarjeta Sol · ${n} cuotas`,[['Contado',money(cash)],['Total',money(total)]],total,`${n} cuotas de ${money(cuota)}`,0,`Tarjeta Sol · ${n} cuotas de ${money(cuota)}`,{formaPago:'Tarjeta Sol',count:n,value:cuota,frequency:'mensual'})}
-  if(m==='Crédito personal'){
-    if(p.categoria==='motos'){let min=Number(qr.credito_personal?.anticipo_min||0);if(!a||a<min)return qerr('Anticipo mínimo: '+money(min));if(a>=cash)return qerr('El anticipo debe ser menor al contado.');let saldo=cash-a,totalSaldo=saldo*(1+0.09*n),total=a+totalSaldo,cuota=totalSaldo/n;return qshow(`Crédito personal · ${n} cuotas`,[['Anticipo',money(a)],['Saldo',money(saldo)],['Total operación',money(total)]],total,`${n} cuotas de ${money(cuota)}`,a,`Crédito personal · anticipo ${money(a)} + ${n} cuotas de ${money(cuota)}`,{formaPago:'Crédito personal',count:n,value:cuota,frequency:'mensual'})}
-    let rate=n===9?0.12:0.10,total=cash*(1+rate*n),cuota=total/n;return qshow(`Crédito personal · ${n} cuotas`,[['Contado',money(cash)],['Total financiado',money(total)]],total,`${n} cuotas de ${money(cuota)}`,0,`Crédito personal · ${n} cuotas de ${money(cuota)}`,{formaPago:'Crédito personal',count:n,value:cuota,frequency:'mensual'});
-  }
-  if(m==='Anticipo + cuotas mensuales'){let min=cash*.40;if(!a||a<min)return qerr('Anticipo mínimo: '+money(min));if(a>=cash)return qerr('El anticipo debe ser menor al contado.');let saldo=cash-a,rate=(p.categoria==='celulares'&&n===6)?.10:(p.categoria==='celulares'&&n===9)?.12:.075,totalSaldo=saldo*(1+rate*n),total=a+totalSaldo,cuota=totalSaldo/n;return qshow(`Anticipo + ${n} cuotas mensuales`,[['Anticipo',money(a)],['Saldo',money(saldo)],['Total operación',money(total)]],total,`${n} cuotas de ${money(cuota)}`,a,`Anticipo ${money(a)} + ${n} cuotas mensuales de ${money(cuota)}`,{formaPago:'Anticipo + cuotas mensuales',count:n,value:cuota,frequency:'mensual'})}
-  if(m==='Anticipo + cuotas semanales'){let min=cash*.35;if(!a||a<min)return qerr('Anticipo mínimo: '+money(min));if(a>=cash)return qerr('El anticipo debe ser menor al contado.');let saldo=cash-a,totalSaldo=saldo*(1+.0105*n),total=a+totalSaldo,cuota=totalSaldo/n;return qshow(`Anticipo + ${n} semanas`,[['Anticipo',money(a)],['Saldo',money(saldo)],['Total operación',money(total)]],total,`${n} cuotas de ${money(cuota)}`,a,`Anticipo ${money(a)} + ${n} cuotas semanales de ${money(cuota)}`,{formaPago:'Anticipo + cuotas semanales',count:n,value:cuota,frequency:'semanal'})}
-  if(m==='Plan entrega cuota 3'){let total=Number(qr.entrega_pactada?.total||0),cuota=Number(qr.entrega_pactada?.cuota||0);if(!total)return qerr('Plan no disponible para este producto.');return qshow('Plan entrega cuota 3',[['Total del plan',money(total)],['Entrega','Al abonar cuota 3']],total,`9 cuotas de ${money(cuota)}`,0,`Plan entrega cuota 3 · 9 cuotas de ${money(cuota)}`,{formaPago:'Entrega pactada',count:0,value:0,frequency:'unico'})}
-}
+function calculateQuote(){let p=selectedCatalogProduct,result=buildPaymentPlan(p,p?._quote||{},qMode.value,Number(qInstall.value||0),Number(qAdvance.value||0));if(result.error)return qerr(result.error);return qshow(result.title,result.lines,result.total,result.installment,result.down,result.paymentText,result.plan)}
 function loadQuoteIntoSale(){
   if(!selectedCatalogProduct||!currentQuote)return;
   if(selectedCatalogProduct.categoria==='motos')return alert('Las operaciones de Motos se gestionan en REST Motos. Esta solicitud admite únicamente Hogar y Celulares.');
-  resetRequestForm();
-  const round2=n=>Math.round((Number(n||0)+Number.EPSILON)*100)/100;
-  saleProductId.value=selectedCatalogProduct.id;prod.value=selectedCatalogProduct.nombre;saleUnit.value=selectedCatalogProduct.categoria;
-  amount.value=round2(currentQuote.total);pay.value=currentQuote.plan?.formaPago||'Contado';down.value=round2(currentQuote.down||0);
-  installmentCount.value=currentQuote.plan?.count||'';installmentValue.value=currentQuote.plan?.count?round2(currentQuote.plan.value):'';installmentFrequency.value=currentQuote.plan?.frequency==='semanal'?'semanal':'mensual';firstDueDate.value='';
-  notes.value=`Cotización desde catálogo. ${currentQuote.notes}`;
-  selectedProduct.innerHTML=`<b>${esc(selectedCatalogProduct.nombre)}</b><br>${esc(currentQuote.paymentText)}<br><b>Total: ${money(currentQuote.total)}</b><br><span class="badge">Comisión estimada ${currentQuote.commissionPct}% · ${money(currentQuote.estimatedCommission)}</span>`;
+  const saleProduct=selectedCatalogProduct,saleQuote=currentQuote;resetRequestForm();selectedCatalogProduct=saleProduct;currentQuote=saleQuote;
+  saleProductId.value=saleProduct.id;prod.value=saleProduct.nombre;saleUnit.value=saleProduct.categoria;
+  pay.value=saleQuote.plan?.formaPago||'Contado';down.value=roundMoney(saleQuote.down||0);setupRequestPlanOptions({selectedValue:String(saleQuote.plan?.count||0),apply:true,resetDue:true});
+  notes.value=`Cotización desde catálogo. ${saleQuote.notes}`;
+  selectedProduct.innerHTML=`<b>${esc(saleProduct.nombre)}</b><br>${esc(saleQuote.paymentText)}<br><b>Total: ${money(saleQuote.total)}</b><br><span class="badge">Comisión estimada ${saleQuote.commissionPct}% · ${money(saleQuote.estimatedCommission)}</span>`;
   syncRequestPlanFields();renderRequestFinanceSummary();showSellerTab('sellerSale');sellerSale.scrollIntoView({behavior:'smooth',block:'start'});
 }
 async function editProduct(id,price){if(profile?.rol!=='admin')return;let p=adminProductCache.find(x=>x.id===id);let nuevo=prompt('Nombre:',p?.nombre||'');if(nuevo===null)return;let precio=prompt('Precio contado:',price);if(precio===null)return;let sub=prompt('Subcategoría:',p?.subcategoria||'');if(sub===null)return;let {error}=await sb.from('productos').update({nombre:nuevo.trim(),precio_contado:Number(precio)||0,subcategoria:sub.trim()||null,actualizado_en:new Date().toISOString()}).eq('id',id);if(error)alert(error.message);loadAdminProducts()}
@@ -463,10 +490,12 @@ async function sellerPrepararVenta(id){
   let p=allCatalog.find(p=>p.id===x.producto_id);
   if(!p&&x.producto_id){const r=await sb.from('productos').select('*').eq('id',x.producto_id).eq('activo',true).maybeSingle();if(!r.error)p=r.data}
   if(!p||!['hogar','celulares'].includes(p.categoria))return alert('No encontré un producto activo de Hogar o Celulares para esta oportunidad. Revisalo con Administración.');
+  let quoteError='';try{await ensureProductQuote(p)}catch(error){quoteError=error.message||'No se pudieron cargar los planes.'}
   resetRequestForm();activeInteresVentaId=x.id;saleInterestId.value=x.id;selectedCatalogProduct=p;saleProductId.value=p.id;saleUnit.value=p.categoria;
-  cn.value=x.clientes_portal?.nombre||'';cp.value=x.clientes_portal?.telefono||'';prod.value=p.nombre;amount.value=Math.round(Number(p.precio_contado||0)*100)/100;pay.value='Contado';down.value=amount.value;
+  cn.value=x.clientes_portal?.nombre||'';cp.value=x.clientes_portal?.telefono||'';prod.value=p.nombre;pay.value='Contado';setupRequestPlanOptions({selectedValue:'0',apply:true});
   notes.value='Oportunidad generada desde “Me interesa” del Portal Cliente.';
   selectedProduct.innerHTML=`<b>${esc(p.nombre)}</b><br><span class="badge">Oportunidad asignada</span><br><span class="muted">Cliente: ${esc(x.clientes_portal?.nombre||'')}</span>`;
+  if(quoteError&&$('requestPlanHelp'))$('requestPlanHelp').textContent='Sólo se cargó contado. No pude consultar los planes: '+quoteError;
   syncRequestPlanFields();renderRequestFinanceSummary();showSellerTab('sellerSale');
 }
 $('sellerInterestState')?.addEventListener('change',renderSellerIntereses);
@@ -580,6 +609,59 @@ function clearBudget(){budget=[];renderBudget()}
 function shareBudget(){if(!budget.length)return alert('Agregá productos al presupuesto.');wa('REST – Presupuesto\n\n'+budget.map(x=>`${x.nombre} — Contado ${money(x.precio_contado)}`).join('\n')+'\n\nConsultame por financiación disponible.')}
 
 const requestMoney=n=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(n)||0);
+let requestPlanApplying=false;
+function installRequestPlanSelector(){
+  if($('requestPlanPreset'))return;
+  const payField=$('pay')?.closest('.request-field');if(!payField)return;
+  const field=document.createElement('div');field.className='request-field';field.innerHTML='<label for="requestPlanPreset">Plan / cuotas</label><select id="requestPlanPreset" class="input" disabled><option value="manual">Elegí primero un producto</option></select>';
+  const help=document.createElement('small');help.id='requestPlanHelp';help.className='request-plan-help muted';help.textContent='Los planes se cargarán desde las condiciones vigentes del catálogo.';
+  payField.insertAdjacentElement('afterend',field);field.insertAdjacentElement('afterend',help);
+  $('requestPlanPreset').addEventListener('change',()=>applyRequestPlan({resetDue:true}));
+}
+function requestSuggestedDueDate(frequency){const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+(frequency==='semanal'?7:frequency==='quincenal'?15:30));return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function requestPlanNeedsAdvance(mode){return mode==='Anticipo + cuotas mensuales'||mode==='Anticipo + cuotas semanales'}
+function setRequestPlanEditing(auto){
+  const needsAdvance=auto&&requestPlanNeedsAdvance(pay.value);
+  [['amount',auto],['down',auto&&!needsAdvance],['installmentCount',auto],['installmentValue',auto]].forEach(([id,locked])=>{const el=$(id);if(!el)return;el.readOnly=Boolean(locked);el.classList.toggle('request-auto-field',Boolean(locked))});
+  if($('installmentFrequency')){installmentFrequency.disabled=Boolean(auto);installmentFrequency.classList.toggle('request-auto-field',Boolean(auto))}
+}
+function requestPlanOptionLabel(p,qr,mode,count){
+  const min=requestPlanNeedsAdvance(mode)?Number((mode.includes('semanales')?qr?.semanal:qr?.mensual)?.anticipo_min||0):0,result=buildPaymentPlan(p,qr,mode,count,min);
+  if(result.error)return count?`${count} cuotas`:'Pago de contado';
+  if(!result.plan.count)return `Contado · ${money(result.total)}`;
+  return `${result.plan.count} cuotas de ${money(result.plan.value)}`+(min?` · anticipo ${money(min)}`:'');
+}
+function resetRequestPlanControl(){
+  const select=$('requestPlanPreset');if(!select)return;
+  select.innerHTML='<option value="manual">Elegí primero un producto</option>';select.value='manual';select.disabled=true;select.classList.remove('request-plan-loading');
+  if($('requestPlanHelp'))$('requestPlanHelp').textContent='Los planes se cargarán desde las condiciones vigentes del catálogo.';
+  setRequestPlanEditing(false);
+}
+function setupRequestPlanOptions({selectedValue=null,apply=true,resetDue=false}={}){
+  const select=$('requestPlanPreset'),p=selectedCatalogProduct;if(!select)return;
+  if(!p){resetRequestPlanControl();return}
+  const qr=p._quote||{},mode=pay.value,counts=quotePlanCounts(p,qr,mode),automatic=counts.length>0;
+  const options=automatic?counts.map(n=>`<option value="${n}">${esc(requestPlanOptionLabel(p,qr,mode,n))}</option>`).join(''):'';
+  select.innerHTML=options+`<option value="manual">${automatic?'Carga manual / excepción':'Completar condiciones manualmente'}</option>`;select.disabled=false;select.classList.remove('request-plan-loading');
+  const wanted=selectedValue===null?(automatic?String(counts[0]):'manual'):String(selectedValue);select.value=[...select.options].some(o=>o.value===wanted)?wanted:'manual';
+  if(apply)applyRequestPlan({resetDue});else{setRequestPlanEditing(select.value!=='manual');if($('requestPlanHelp'))$('requestPlanHelp').textContent=select.value==='manual'?'Podés conservar o ajustar los importes manualmente.':'Plan seleccionado desde el catálogo vigente.'}
+}
+function applyRequestPlan({resetDue=false}={}){
+  if(requestPlanApplying)return;
+  const select=$('requestPlanPreset'),p=selectedCatalogProduct;if(!select||!p)return;
+  if(select.value==='manual'){setRequestPlanEditing(false);if($('requestPlanHelp'))$('requestPlanHelp').textContent='Carga manual habilitada para una excepción comercial.';syncRequestPlanFields();return}
+  const mode=pay.value,qr=p._quote||{},count=Number(select.value||0),cash=Number(p.precio_contado||0),needsAdvance=requestPlanNeedsAdvance(mode);let advance=0;
+  if(needsAdvance){const cfg=mode.includes('semanales')?qr.semanal:qr.mensual,min=Number(cfg?.anticipo_min||0),entered=Number(down.value||0);advance=entered>=min&&entered<cash?entered:min}
+  const result=buildPaymentPlan(p,qr,mode,count,advance);
+  if(result.error){setRequestPlanEditing(false);if($('requestPlanHelp'))$('requestPlanHelp').textContent=result.error;renderRequestFinanceSummary();return}
+  requestPlanApplying=true;
+  try{
+    amount.value=roundMoney(result.total);down.value=mode==='Contado'?roundMoney(result.total):roundMoney(result.down||0);installmentCount.value=result.plan.count||'';installmentValue.value=result.plan.count?roundMoney(result.plan.value):'';installmentFrequency.value=result.plan.frequency==='semanal'?'semanal':'mensual';
+    if(result.plan.count&&(resetDue||!firstDueDate.value||firstDueDate.value<requestToday()))firstDueDate.value=requestSuggestedDueDate(result.plan.frequency);if(!result.plan.count)firstDueDate.value='';
+    setRequestPlanEditing(true);syncRequestPlanFields();
+    if($('requestPlanHelp'))$('requestPlanHelp').textContent=result.plan.count?`Calculado automáticamente: total ${requestMoney(result.total)}${result.down?` · anticipo ${requestMoney(result.down)}`:''}. Podés ajustar el primer vencimiento.`:`Precio de contado ${requestMoney(result.total)}.`;
+  }finally{requestPlanApplying=false}
+}
 function requestToday(){const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)}
 function requestIsCash(){return String(pay.value||'').toLowerCase().includes('contado')}
 function syncRequestPlanFields(){
@@ -600,9 +682,9 @@ function renderRequestFinanceSummary(){
 }
 function resetRequestForm(){
   ['cn','cd','cp','cbirth','caddr','ccity','cref','saleProductId','saleInterestId','prod','amount','down','installmentCount','installmentValue','firstDueDate','notes'].forEach(id=>{if($(id))$(id).value=''});
-  saleUnit.value='';pay.value='Contado';installmentFrequency.value='mensual';activeInteresVentaId=null;solicitudVentaEditandoId=null;solicitudIdempotencyKey=null;
+  saleUnit.value='';pay.value='Contado';installmentFrequency.value='mensual';activeInteresVentaId=null;solicitudVentaEditandoId=null;solicitudIdempotencyKey=null;selectedCatalogProduct=null;currentQuote=null;
   $('requestFormTitle').textContent='Nueva solicitud de venta';saleBtn.textContent='ENVIAR SOLICITUD';$('cancelRequestEditBtn').classList.add('hide');selectedProduct.textContent='Elegí un producto de Hogar o Celulares desde el catálogo.';smsg.textContent='';
-  firstDueDate.min=requestToday();syncRequestPlanFields();
+  firstDueDate.min=requestToday();resetRequestPlanControl();syncRequestPlanFields();
 }
 function requestPayload(){return {
   solicitud_id:solicitudVentaEditandoId||null,interes_cliente_id:saleInterestId.value||null,producto_id:saleProductId.value||null,unidad:saleUnit.value,
@@ -640,11 +722,14 @@ async function editSellerRequest(id){
   const x=sellerSolicitudCache.find(r=>r.id===id);if(!x||!['pendiente','correccion_solicitada'].includes(x.estado))return alert('La solicitud ya no puede editarse.');
   let p=allCatalog.find(p=>p.id===x.producto_id);if(!p){const r=await sb.from('productos').select('*').eq('id',x.producto_id).eq('activo',true).maybeSingle();if(!r.error)p=r.data}
   if(!p||!['hogar','celulares'].includes(p.categoria))return alert('El producto ya no está disponible. Consultá con Administración.');
+  try{await ensureProductQuote(p)}catch(_error){}
   resetRequestForm();solicitudVentaEditandoId=x.id;solicitudIdempotencyKey=crypto.randomUUID();selectedCatalogProduct=p;activeInteresVentaId=x.interes_cliente_id||null;
   saleProductId.value=x.producto_id;saleInterestId.value=x.interes_cliente_id||'';saleUnit.value=x.unidad;prod.value=x.producto_nombre;cn.value=x.cliente_nombre;cd.value=x.cliente_dni;cp.value=x.cliente_telefono||'';cbirth.value=x.cliente_fecha_nacimiento||'';caddr.value=x.cliente_direccion||'';ccity.value=x.cliente_ciudad||'';cref.value=x.cliente_telefono_referencia||'';pay.value=x.forma_pago;amount.value=x.monto_total;down.value=x.anticipo;installmentCount.value=x.cantidad_cuotas||'';installmentValue.value=x.valor_cuota||'';installmentFrequency.value=x.frecuencia==='unico'?'mensual':x.frecuencia;firstDueDate.value=x.primer_vencimiento||'';notes.value=x.notas||'';
+  setupRequestPlanOptions({selectedValue:'manual',apply:false});
   $('requestFormTitle').textContent='Editar solicitud';saleBtn.textContent='REENVIAR A ADMINISTRACIÓN';$('cancelRequestEditBtn').classList.remove('hide');selectedProduct.innerHTML=`<b>${esc(x.producto_nombre)}</b><br>${solicitudBadge(x.estado)}${x.motivo_revision?`<br><span class="muted">${esc(x.motivo_revision)}</span>`:''}`;syncRequestPlanFields();renderRequestFinanceSummary();showSellerTab('sellerSale');
 }
-['amount','down','installmentCount','installmentValue','firstDueDate'].forEach(id=>$(id)?.addEventListener('input',()=>{if(id==='amount'&&requestIsCash())down.value=amount.value;renderRequestFinanceSummary()}));$('pay')?.addEventListener('change',syncRequestPlanFields);$('installmentFrequency')?.addEventListener('change',renderRequestFinanceSummary);$('saleUnit')?.addEventListener('change',renderRequestFinanceSummary);$('cancelRequestEditBtn')?.addEventListener('click',resetRequestForm);if($('firstDueDate'))$('firstDueDate').min=requestToday();syncRequestPlanFields();
+installRequestPlanSelector();
+['amount','down','installmentCount','installmentValue','firstDueDate'].forEach(id=>$(id)?.addEventListener('input',()=>{if(id==='amount'&&requestIsCash())down.value=amount.value;renderRequestFinanceSummary()}));$('down')?.addEventListener('change',()=>{if(!requestPlanApplying&&$('requestPlanPreset')?.value!=='manual'&&requestPlanNeedsAdvance(pay.value))applyRequestPlan()});$('pay')?.addEventListener('change',()=>{down.value='';setupRequestPlanOptions({resetDue:true})});$('installmentFrequency')?.addEventListener('change',renderRequestFinanceSummary);$('saleUnit')?.addEventListener('change',renderRequestFinanceSummary);$('cancelRequestEditBtn')?.addEventListener('click',resetRequestForm);if($('firstDueDate'))$('firstDueDate').min=requestToday();resetRequestPlanControl();syncRequestPlanFields();
 async function statusSale(id,estado){let {error}=await sb.from('ventas').update({estado,aprobada_por:profile.id}).eq('id',id);if(error)return alert(error.message);loadAdmin()}
 async function approveSale(id){let {error}=await sb.from('ventas').update({estado:'aprobada_entrega',aprobada_por:profile.id,actualizado_en:new Date().toISOString()}).eq('id',id).eq('estado','en_revision');if(error)return alert(error.message);alert('Venta aprobada. Ya está disponible en Logística para asignar y entregar.');loadAdmin()}
 async function rejectSale(id){let motivo=prompt('Motivo del rechazo (opcional):')||'';let {error}=await sb.from('ventas').update({estado:'rechazada',motivo_cancelacion:motivo.trim()||null,aprobada_por:profile.id,actualizado_en:new Date().toISOString()}).eq('id',id).eq('estado','en_revision');if(error)return alert(error.message);loadAdmin()}

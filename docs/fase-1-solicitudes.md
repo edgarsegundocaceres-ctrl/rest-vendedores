@@ -9,6 +9,7 @@ La entrega implementa el cambio mínimo seguro definido en el Documento Maestro:
 ## Alcance funcional
 
 - El vendedor elige un producto activo del catálogo y completa una sola ficha con cliente y operación.
+- Al cargar una venta desde una oportunidad, el formulario consulta `cotizar_producto` y ofrece los planes vigentes del mismo producto. La modalidad y la cantidad de cuotas autocompletan total, anticipo mínimo, valor, periodicidad y primer vencimiento; la carga manual permanece disponible para excepciones.
 - El envío crea una solicitud pendiente, sin crear cliente, venta ni deuda.
 - Administración puede aprobar, rechazar o pedir corrección con motivo obligatorio.
 - El vendedor puede editar y reenviar solicitudes pendientes o con corrección solicitada.
@@ -32,7 +33,7 @@ La entrega implementa el cambio mínimo seguro definido en el Documento Maestro:
 1. Completado: se aplicó `supabase/migrations/20260920211644_app_integral_fase1_solicitudes.sql` mediante el flujo de migraciones.
 2. Completado: se verificaron exposición en PostgREST, permisos, RLS y asesores de seguridad y rendimiento.
 3. Completado: se ejecutó una aceptación transaccional en la base real con `ROLLBACK`, sin dejar clientes, ventas, cuentas ni cuotas de prueba.
-4. Pendiente: inspeccionar visualmente el preview en navegador real e iniciar una aceptación controlada con usuarios de prueba.
+4. En curso: el flujo base de solicitudes fue validado por el usuario en el preview; falta validar allí el nuevo selector automático de planes.
 5. Pendiente: publicar juntos `index.html` y `sw.js` sólo cuando todas las pruebas pasen y exista autorización expresa.
 6. Después de publicar: observar solicitudes, errores y cupo durante el período inicial sin migrar cartera de G-CRED.
 
@@ -40,6 +41,8 @@ La entrega implementa el cambio mínimo seguro definido en el Documento Maestro:
 
 - Contado: una solicitud produce una venta, una cuenta sin saldo y cero cuotas.
 - Financiado: la suma de cuotas coincide exactamente con el saldo; la última absorbe diferencias de centavos.
+- Desde “Oportunidades > Cargar venta”, Contado, Crédito personal, Anticipo + cuotas mensuales/semanales y Tarjeta Sol muestran sus cantidades de cuotas y completan los importes sin carga manual.
+- Al cambiar el anticipo de un plan que lo admite, se recalculan el total y la cuota; “Carga manual / excepción” vuelve a habilitar los campos.
 - Vencimientos mensual, quincenal y semanal quedan en las fechas esperadas.
 - Pedir corrección permite editar y reenviar; rechazo impide aprobar.
 - Dos aprobaciones o doble clic sobre la misma solicitud crean una sola venta y una sola cuenta.
@@ -60,6 +63,7 @@ Validación ejecutada el 20 de septiembre de 2026 sobre la candidata, sin escrib
 - Se comprobó que la oportunidad vinculada queda cerrada únicamente después de aprobar.
 - La prueba de integración del frontend completó 13 controles del flujo vendedor/administrador, incluida la protección contra contenido HTML, el bloqueo de Motos, el vínculo con oportunidades y la presentación correcta de operaciones no financiadas.
 - El JavaScript embebido, el service worker y la revisión de whitespace finalizaron sin errores.
+- El motor compartido de planes pasó pruebas para contado, crédito personal de 6 y 9 cuotas, anticipo mensual, anticipo semanal y Tarjeta Sol, incluidos redondeos y rechazo de opciones no disponibles.
 - La migración quedó registrada en Supabase como `20260920211644_app_integral_fase1_solicitudes`.
 - Las cuatro tablas nuevas quedaron vacías, con RLS activo y sólo permiso de lectura para usuarios autenticados; las escrituras continúan encapsuladas en RPC.
 - PostgREST reconoce tablas y RPC: las solicitudes anónimas reciben denegación de permisos en lugar de recurso inexistente.
@@ -67,7 +71,7 @@ Validación ejecutada el 20 de septiembre de 2026 sobre la candidata, sin escrib
 - Toda la aceptación se revirtió al terminar: quedaron cero solicitudes y cero ventas de prueba persistidas.
 - Los asesores sólo señalan como advertencias nuevas las tres RPC `SECURITY DEFINER` expuestas deliberadamente a usuarios autenticados. Cada RPC valida internamente vendedor o Administración, usa `search_path` vacío, niega acceso anónimo y evita escritura directa en las tablas.
 
-La inspección visual en navegador real sigue siendo una puerta obligatoria de la candidata. Debe completarse en el preview antes de autorizar el cambio de `main` y la publicación del frontend.
+La inspección visual del nuevo selector de planes en navegador real sigue siendo una puerta obligatoria de la candidata. Debe completarse en el preview antes de autorizar el cambio de `main` y la publicación del frontend.
 
 ## Reversión segura
 

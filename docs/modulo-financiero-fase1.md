@@ -193,5 +193,5 @@ Resultado actual: `OK: 32 controles del módulo financiero superados`.
 - `main`: sin cambios.
 - Producción: sin cambios.
 - URL pública: sin cambios.
-- Preview aislado: se completará al publicar esta rama candidata.
+- Preview aislado protegido: `https://rest-vendedores-git-work-modulo-5c4b8e-edgarsegundocaceres-1114.vercel.app/`.
 - Promoción a producción: prohibida hasta la prueba y autorización del responsable.

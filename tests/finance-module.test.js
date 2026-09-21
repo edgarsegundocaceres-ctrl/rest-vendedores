@@ -83,9 +83,41 @@ assert.equal(context.financePortalState([{ portal_token: 'uno', activo: true }])
 assert.equal(context.financePortalState([{ portal_token: 'uno', activo: true }, { portal_token: 'dos', activo: true }]), 'ambiguous', 'Coincidencia ambigua de portal');
 assert.equal(context.financePortalState([{ portal_token: 'uno', activo: false }]), 'missing', 'Portal revocado no se comparte');
 
+const simulatedPayments = [
+  { installmentId: 'future', amount: 25 },
+  { installmentId: 'future', amount: 15 },
+  { installmentId: 'today', amount: 50 },
+];
+assert.equal(context.financeSimulationApplied('future', simulatedPayments), 40, 'Suma solamente los cobros simulados de la cuota');
+assert.equal(context.financeSimulationBalance(rows[0], simulatedPayments), 60, 'Calcula el saldo simulado sin alterar el saldo real');
+
+const validPayment = context.financeValidatePayment(rows[0], {
+  amount: 30,
+  effectiveAt: '2026-09-21T09:30',
+  method: 'transferencia',
+}, simulatedPayments, '2026-09-21T10:00');
+assert.equal(validPayment.ok, true, 'Acepta un cobro parcial válido');
+assert.equal(validPayment.status, 'partial', 'Distingue el cobro parcial');
+assert.equal(validPayment.resultingBalance, 30, 'Proyecta el saldo posterior');
+assert.equal(context.financeValidatePayment(rows[0], { amount: 61, effectiveAt: '2026-09-21T09:30', method: 'efectivo' }, simulatedPayments, '2026-09-21T10:00').ok, false, 'Bloquea sobrepagos');
+assert.equal(context.financeValidatePayment(rows[0], { amount: 0, effectiveAt: '2026-09-21T09:30', method: 'efectivo' }, simulatedPayments, '2026-09-21T10:00').ok, false, 'Bloquea importes nulos');
+assert.equal(context.financeValidatePayment(rows[0], { amount: 10, effectiveAt: '2026-09-21T10:01', method: 'efectivo' }, simulatedPayments, '2026-09-21T10:00').ok, false, 'Bloquea fecha efectiva futura');
+assert.equal(context.financeValidatePayment(rows[0], { amount: 10, effectiveAt: '2026-09-21T09:30', method: 'cripto' }, simulatedPayments, '2026-09-21T10:00').ok, false, 'Bloquea medios de pago no previstos');
+assert.equal(context.financeValidatePayment(rows[5], { amount: 10, effectiveAt: '2026-09-21T09:30', method: 'efectivo' }, [], '2026-09-21T10:00').ok, false, 'Bloquea cobro sobre una cuota anulada');
+
+assert.equal(context.financeValidatePromise(rows[0], { amount: 40, promisedDate: '2026-09-22', channel: 'whatsapp' }, simulatedPayments, today).ok, true, 'Acepta promesa futura válida');
+assert.equal(context.financeValidatePromise(rows[0], { amount: 40, promisedDate: '2026-09-20', channel: 'whatsapp' }, simulatedPayments, today).ok, false, 'Bloquea promesa con fecha pasada');
+assert.equal(context.financeValidatePromise(rows[0], { amount: 61, promisedDate: '2026-09-22', channel: 'telefono' }, simulatedPayments, today).ok, false, 'Bloquea promesa superior al saldo');
+assert.equal(context.financeValidatePromise(rows[5], { amount: 10, promisedDate: '2026-09-22', channel: 'telefono' }, [], today).ok, false, 'Bloquea promesa sobre una cuota anulada');
+assert.equal(context.financeReceiptNumber('2026-09-21T10:00', 7), 'SIM-202609211000-007', 'Genera identificador visible de simulación');
+
 const financeBlock = html.slice(html.indexOf('// ===== Módulo financiero REST'), html.indexOf('let adminInteresesCache'));
-assert.doesNotMatch(financeBlock, /\.(insert|update|upsert|delete)\s*\(|\.rpc\s*\(/, 'La fase 1 financiera debe ser sólo lectura');
+assert.doesNotMatch(financeBlock, /\.(insert|update|upsert|delete)\s*\(|\.rpc\s*\(/, 'La fase 2 financiera no debe escribir en Supabase');
 assert.match(financeBlock, /profile\?\.rol\s*!==\s*'admin'/, 'El acceso requiere rol administrativo en la interfaz');
+assert.match(financeBlock, /FINANCE_PHASE2_MODE='simulation'/, 'La fase 2 declara explícitamente el modo simulación');
+assert.match(financeBlock, /SIMULAR COBRO/, 'La agenda ofrece el cobro de prueba');
+assert.match(financeBlock, /PROMESA DE PRUEBA/, 'La agenda ofrece la promesa de prueba');
+assert.match(financeBlock, /SIN VALIDEZ/, 'El recibo queda marcado como no oficial');
 assert.match(html, /\.eq\('cliente_id',clientId\)/, 'La ficha consulta una sola persona');
 assert.match(html, /\.gte\('vencimiento',from\)\.lte\('vencimiento',to\)/, 'La agenda consulta un rango acotado en servidor');
 assert.match(html, /@media\(max-width:560px\).*collections/s, 'Existe diseño mobile-first/responsivo');
@@ -94,6 +126,6 @@ const staticMarkup = html.slice(0, html.indexOf('<script>\nconst sb='));
 const ids = [...staticMarkup.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
 assert.deepEqual(duplicates, [], `IDs HTML duplicados: ${duplicates.join(', ')}`);
-['solicitudesAdmin', 'catalogoAdmin', 'logisticaAdmin', 'referidosAdmin', 'sellerRoot', 'clientRoot', 'cobranzasAdmin', 'financialClientDetail'].forEach(id => assert.ok(ids.includes(id), `Falta el módulo ${id}`));
+['solicitudesAdmin', 'catalogoAdmin', 'logisticaAdmin', 'referidosAdmin', 'sellerRoot', 'clientRoot', 'cobranzasAdmin', 'financialClientDetail', 'collectionActionPanel', 'collectionSessionPanel', 'financePrintArea'].forEach(id => assert.ok(ids.includes(id), `Falta el módulo ${id}`));
 
-console.log('OK: 32 controles del módulo financiero superados');
+console.log('OK: 51 controles del módulo financiero superados');

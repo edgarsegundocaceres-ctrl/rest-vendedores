@@ -121,6 +121,10 @@ assert.match(financeBlock, /SIN VALIDEZ/, 'El recibo queda marcado como no ofici
 assert.match(html, /\.eq\('cliente_id',clientId\)/, 'La ficha consulta una sola persona');
 assert.match(html, /\.gte\('vencimiento',from\)\.lte\('vencimiento',to\)/, 'La agenda consulta un rango acotado en servidor');
 assert.match(html, /@media\(max-width:560px\).*collections/s, 'Existe diseño mobile-first/responsivo');
+assert.doesNotMatch(html, /Warning: truncated output|tokens truncated|…\d+ tokens truncated/, 'La candidata no contiene texto truncado del entorno de trabajo');
+assert.match(html, /await boot\(\)/, 'El ingreso espera a que termine la inicialización autenticada');
+assert.match(html, /async function refreshAdminSession\(\)/, 'Existe recuperación controlada de sesión administrativa');
+assert.match(html, /loadPortalClients\(false\)/, 'La consulta de clientes reintenta una sola vez después de renovar la sesión');
 
 const staticMarkup = html.slice(0, html.indexOf('<script>\nconst sb='));
 const ids = [...staticMarkup.matchAll(/\sid="([^"]+)"/g)].map(match => match[1]);
@@ -128,4 +132,4 @@ const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
 assert.deepEqual(duplicates, [], `IDs HTML duplicados: ${duplicates.join(', ')}`);
 ['solicitudesAdmin', 'catalogoAdmin', 'logisticaAdmin', 'referidosAdmin', 'sellerRoot', 'clientRoot', 'cobranzasAdmin', 'financialClientDetail', 'collectionActionPanel', 'collectionSessionPanel', 'financePrintArea'].forEach(id => assert.ok(ids.includes(id), `Falta el módulo ${id}`));
 
-console.log('OK: 51 controles del módulo financiero superados');
+console.log('OK: 55 controles del módulo financiero superados');

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rest-shell-v1.1.1';
+const CACHE_NAME = 'rest-shell-v1.2.0';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/rest-192.png', '/icons/rest-512.png'];
 
 self.addEventListener('install', event => {

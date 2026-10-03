@@ -1,5 +1,5 @@
-const CACHE_NAME = 'rest-shell-v1.3.1';
-const SHELL = ['/', '/manifest.webmanifest', '/icons/rest-192.png', '/icons/rest-512.png'];
+const CACHE_NAME = 'rest-shell-v1.4.0';
+const SHELL = ['/', '/captacion-vendedores.css', '/captacion-vendedores.js', '/manifest.webmanifest', '/icons/rest-192.png', '/icons/rest-512.png'];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -32,7 +32,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (url.pathname === '/manifest.webmanifest' || url.pathname.startsWith('/icons/')) {
+  if (url.pathname === '/manifest.webmanifest' || url.pathname.startsWith('/icons/') || url.pathname === '/captacion-vendedores.css' || url.pathname === '/captacion-vendedores.js') {
     event.respondWith(caches.match(req).then(cached => cached || fetch(req)));
   }
 });

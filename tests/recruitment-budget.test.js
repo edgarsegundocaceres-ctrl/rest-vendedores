@@ -114,7 +114,7 @@ test('el presupuesto conserva snapshot, vendedor y conversión posterior',()=>{
 });
 
 test('el service worker incluye los recursos nuevos y cambia la versión de caché',()=>{
-  assert.match(serviceWorker,/rest-shell-v1\.4\.1/);
+  assert.match(serviceWorker,/rest-shell-v1\.4\.2/);
   assert.match(serviceWorker,/captacion-vendedores\.css/);
   assert.match(serviceWorker,/captacion-vendedores\.js/);
 });

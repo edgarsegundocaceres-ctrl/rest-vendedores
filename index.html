@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- REST v1.4.0 candidato · Captación de vendedores y presupuestos comerciales trazables -->
+<!-- REST v1.4.1 candidato · Captación de vendedores y presupuestos comerciales trazables -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -1363,8 +1363,8 @@ $('investTerm')?.addEventListener('change',renderInvestCalculator);
 renderInvestCalculator();
 
 initRecruitmentUi();
-const qs=new URLSearchParams(location.search), portalToken=qs.get('portal'), referralToken=qs.get('ref'), sellerApplicationRoute=qs.get('postularme')==='1';
-if(sellerApplicationRoute)bootSellerRecruitment();else if(portalToken)bootClientPortal(portalToken);else if(referralToken)bootReferralPage(referralToken);else boot();
+const qs=new URLSearchParams(location.search), portalToken=qs.get('portal'), referralToken=qs.get('ref'), sellerApplicationRoute=qs.get('postularme')==='1', recruitmentDemoRoute=qs.get('demo')||'';
+if(recruitmentDemoRoute==='admin-captacion')bootRecruitmentAdminDemo();else if(recruitmentDemoRoute==='presupuesto-captacion')bootRecruitmentBudgetDemo();else if(sellerApplicationRoute)bootSellerRecruitment();else if(portalToken)bootClientPortal(portalToken);else if(referralToken)bootReferralPage(referralToken);else boot();
 </script>
 </body>
 </html>

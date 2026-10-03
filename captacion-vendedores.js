@@ -22,6 +22,7 @@ const APPLICANT_AVAILABILITY_LABELS={horas_semana:'Algunas horas por semana','1_
 const RECRUITMENT_DEMO_ROWS=[{
   id:'demo-postulante-1',nombre:'Postulante',apellido:'de prueba',dni:'30111222',fecha_nacimiento:'1990-05-12',telefono:'5493855550101',email:'postulante.demo@example.com',localidad:'Santiago del Estero',provincia:'Santiago del Estero',ocupacion_actual:'Comerciante',trabaja_actualmente:true,actividad_actual:'Atención al público',experiencia_ventas:true,descripcion_experiencia:'Experiencia de muestra para revisar el diseño.',motivacion:'Quiero ampliar mi actividad comercial con las herramientas de REST.',canales:['whatsapp','facebook_marketplace','contactos_personales'],canales_otros:null,disponibilidad:'1_2_horas_dia',disponibilidad_otro:null,estado:'pendiente',observaciones_internas:null,condiciones_comision:null,vendedor_id:null,creado_en:new Date().toISOString(),vendedores:null
 }];
+const RECRUITMENT_DEMO_IMAGE='https://gajlmcqaylezudttoaju.supabase.co/storage/v1/object/public/catalogo-productos/1789842808509-3b264070-7291-408b-91d5-9def89b79d36.jpg';
 
 let adminApplicantCache=[];
 let adminApplicantHistory=[];
@@ -31,7 +32,8 @@ let sellerBudgetCache=[];
 let activeBudgetShare=null;
 
 function recruitmentEscape(value){return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))}
-function recruitmentIsDemo(){return new URLSearchParams(location.search).get('demo')==='captacion'}
+function recruitmentDemoMode(){return new URLSearchParams(location.search).get('demo')||''}
+function recruitmentIsDemo(){return ['captacion','admin-captacion','presupuesto-captacion'].includes(recruitmentDemoMode())}
 function nullableBoolean(value){return value==='true'?true:value==='false'?false:null}
 function recruitmentDate(value){if(!value)return '—';const match=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));return match?`${match[3]}/${match[2]}/${match[1]}`:new Date(value).toLocaleDateString('es-AR')}
 function recruitmentDateTime(value){if(!value)return '—';try{return new Intl.DateTimeFormat('es-AR',{dateStyle:'short',timeStyle:'short',timeZone:'America/Argentina/Buenos_Aires'}).format(new Date(value))}catch{return '—'}}
@@ -62,6 +64,40 @@ async function bootSellerRecruitment(){
   }catch(error){
     if(notice){notice.textContent='Vista preliminar: el contenido definitivo se habilitará al instalar la migración en el entorno de prueba.';notice.classList.remove('hide')}
   }
+}
+
+function recruitmentDemoProduct(){
+  const cash=188700,total6=296259,total9=375513;
+  return {id:'demo-producto-hogar',nombre:'Armario multiuso Acapulco',categoria:'hogar',subcategoria:'Muebles',precio_contado:cash,imagen_url:RECRUITMENT_DEMO_IMAGE,activo:true,_quote:{credito_personal:[{cuotas:6,total:total6,cuota:total6/6},{cuotas:9,total:total9,cuota:total9/9}]}};
+}
+
+function recruitmentDemoBudgetRecord(prospectName='Cliente de muestra'){
+  const product=recruitmentDemoProduct(),created=new Date(),valid=new Date(created);valid.setDate(valid.getDate()+7);
+  return {id:`demo-presupuesto-${Date.now()}`,codigo:'REST-DEMO-001',estado:'vigente',creado_en:created.toISOString(),vigente_hasta:valid.toISOString().slice(0,10),producto_id:product.id,producto_nombre_snapshot:product.nombre,producto_categoria_snapshot:product.categoria,producto_imagen_url_snapshot:product.imagen_url,precio_contado_snapshot:product.precio_contado,modalidad_snapshot:'Crédito personal',cantidad_cuotas_snapshot:6,valor_cuota_snapshot:49376.5,anticipo_snapshot:0,frecuencia_snapshot:'mensual',total_snapshot:296259,prospecto_nombre:prospectName,prospecto_telefono:'5493855550101',prospecto_email:null,condiciones_snapshot:{title:'Crédito personal · 6 cuotas',total:296259,count:6,value:49376.5,down:0,frequency:'mensual'},vendedores:{nombre:'Vendedor demostración'},clientes:null};
+}
+
+function bootRecruitmentAdminDemo(){
+  document.body.classList.add('recruitment-admin-demo');
+  ['loginScreen','recruitmentRoot','clientRoot','referralRoot','sellerRoot','courierRoot'].forEach(id=>document.getElementById(id)?.classList.add('hide'));
+  document.getElementById('appScreen')?.classList.remove('hide');document.getElementById('adminRoot')?.classList.remove('hide');
+  if(typeof profile!=='undefined')profile={id:'demo-admin',nombre:'Administración demo',rol:'admin',activo:true};
+  const hello=document.getElementById('helloTxt'),role=document.getElementById('roleTxt');if(hello)hello.textContent='Administración · Demostración';if(role)role.textContent='Datos ficticios · no se guarda ningún cambio';
+  document.querySelectorAll('#adminRoot .panel').forEach(panel=>panel.classList.add('hide'));document.getElementById('vendedores')?.classList.remove('hide');
+  const active=document.getElementById('sellerAdminActive');if(active)active.innerHTML='<div class="card demo-safety"><b>Modo demostración aislado</b><p>Usá las pestañas Postulantes, Presupuestos y Contenido público. Ninguna acción crea usuarios ni modifica la base real.</p><div class="applicant-actions"><a class="btn btn2" href="?postularme=1&demo=captacion">VER LANDING</a><a class="btn" href="?demo=presupuesto-captacion">VER PRESUPUESTO</a></div></div>';
+  showSellerAdminView('applicants');loadAdminRecruitment();
+}
+
+function bootRecruitmentBudgetDemo(){
+  document.body.classList.add('seller-mode','recruitment-budget-demo');
+  ['loginScreen','recruitmentRoot','clientRoot','referralRoot','adminRoot','courierRoot'].forEach(id=>document.getElementById(id)?.classList.add('hide'));
+  document.getElementById('appScreen')?.classList.remove('hide');document.getElementById('sellerRoot')?.classList.remove('hide');
+  if(typeof profile!=='undefined')profile={id:'demo-profile',nombre:'Vendedor demo',rol:'vendedor',activo:true};
+  if(typeof seller!=='undefined')seller={id:'demo-seller',nombre:'Vendedor demostración',categoria_actual:'junior',activo:true};
+  const greeting=document.getElementById('sellerGreeting');if(greeting)greeting.textContent='Presupuesto · Demostración';
+  document.querySelectorAll('.spanel').forEach(panel=>panel.classList.add('hide'));document.getElementById('sellerCatalog')?.classList.remove('hide');
+  const heading=document.querySelector('#sellerCatalog .seller-catalog-head');if(heading)heading.insertAdjacentHTML('afterend','<div class="demo-safety"><b>Modo demostración aislado</b><p>El producto y los importes son de muestra. No se consulta ni modifica información operativa.</p><div class="applicant-actions"><a class="btn btn2" href="?postularme=1&demo=captacion">LANDING</a><a class="btn btn2" href="?demo=admin-captacion">ADMINISTRACIÓN</a></div></div>');
+  if(typeof allCatalog!=='undefined')allCatalog=[recruitmentDemoProduct()];
+  if(typeof refreshSubcategories==='function')refreshSubcategories();if(typeof renderCatalog==='function')renderCatalog();
 }
 
 function scrollToSellerApplication(){document.getElementById('sellerApplicationCard')?.scrollIntoView({behavior:'smooth',block:'start'})}
@@ -283,7 +319,12 @@ async function createTraceableBudget(){
   if(prospectPhone){const digits=prospectPhone.replace(/\D/g,'');if(digits.length<8||digits.length>15)return status.textContent='Revisá el WhatsApp del prospecto.'}
   button.disabled=true;status.textContent='Validando precio y plan en REST...';
   const params={p_producto_id:selectedCatalogProduct.id,p_modalidad:document.getElementById('qMode')?.value||currentQuote.plan?.formaPago,p_cuotas:Number(currentQuote.plan?.count||0),p_anticipo:Number(currentQuote.down||0),p_prospecto_nombre:prospectName,p_prospecto_telefono:prospectPhone,p_prospecto_email:prospectEmail,p_vigencia_dias:Number(document.getElementById('budgetValidity')?.value||7),p_cliente_id:null};
-  const {data,error}=await sb.rpc('crear_presupuesto_vendedor',params);
+  let data,error;
+  if(recruitmentIsDemo()){
+    const valid=new Date();valid.setDate(valid.getDate()+params.p_vigencia_dias);
+    const record={...recruitmentDemoBudgetRecord(prospectName||'Cliente de muestra'),id:`demo-presupuesto-${Date.now()}`,codigo:`REST-DEMO-${String(sellerBudgetCache.length+1).padStart(3,'0')}`,vigente_hasta:valid.toISOString().slice(0,10),producto_nombre_snapshot:selectedCatalogProduct.nombre,producto_categoria_snapshot:selectedCatalogProduct.categoria,producto_imagen_url_snapshot:selectedCatalogProduct.imagen_url,precio_contado_snapshot:Number(selectedCatalogProduct.precio_contado||0),modalidad_snapshot:params.p_modalidad,cantidad_cuotas_snapshot:Number(currentQuote.plan?.count||0),valor_cuota_snapshot:Number(currentQuote.plan?.value||0),anticipo_snapshot:Number(currentQuote.down||0),frecuencia_snapshot:currentQuote.plan?.frequency||'mensual',total_snapshot:Number(currentQuote.total||0),prospecto_nombre:prospectName,prospecto_telefono:prospectPhone,prospecto_email:prospectEmail,condiciones_snapshot:{...currentQuote,...currentQuote.plan,title:currentQuote.title,total:Number(currentQuote.total||0),down:Number(currentQuote.down||0)}};
+    data={presupuesto:record,cotizacion:record.condiciones_snapshot};sellerBudgetCache.unshift(record);
+  }else({data,error}=await sb.rpc('crear_presupuesto_vendedor',params));
   if(error){status.textContent=recruitmentSchemaMissing(error)?'La migración de presupuestos todavía no está instalada en este entorno de prueba.':error.message;button.disabled=false;return}
   const record=data?.presupuesto,quote=data?.cotizacion;if(!record||!quote){status.textContent='REST no devolvió el presupuesto completo.';button.disabled=false;return}
   activeBudgetShare={record,quote,blob:null};status.className='recruit-status ok';status.innerHTML=`<b>✓ Presupuesto ${recruitmentEscape(record.codigo)} guardado.</b><br>El precio quedó congelado en este documento.<div class="budget-share-actions" style="margin-top:10px"><button class="btn" type="button" onclick="shareActiveBudgetImage()">COMPARTIR IMAGEN</button><button class="btn btn2" type="button" onclick="downloadActiveBudgetImage()">DESCARGAR IMAGEN</button><button class="btn good" type="button" onclick="shareActiveBudgetWhatsApp()">WHATSAPP</button><button class="btn btn2" type="button" onclick="copyActiveBudgetText()">COPIAR TEXTO</button></div><p style="font-size:12px;margin:9px 0 0">WhatsApp no permite adjuntar un archivo automáticamente desde el navegador. “Compartir imagen” abre el menú nativo para elegir WhatsApp cuando el dispositivo lo admite.</p>`;await loadSellerBudgets();
@@ -318,17 +359,22 @@ async function copyActiveBudgetText(){if(!activeBudgetShare)return;const text=bu
 
 async function loadSellerBudgets(){
   const list=document.getElementById('sellerBudgetList');if(!list||typeof seller==='undefined'||!seller?.id)return;
+  if(recruitmentIsDemo()){renderSellerBudgetHistory(list);return}
   const {data,error}=await sb.from('presupuestos').select('*').order('creado_en',{ascending:false}).limit(50);
   if(error){list.innerHTML=`<p class="muted">${recruitmentSchemaMissing(error)?'El historial se habilitará al instalar la migración de presupuestos.':recruitmentEscape(error.message)}</p>`;return}
-  sellerBudgetCache=data||[];list.innerHTML=sellerBudgetCache.map(record=>{const state=budgetStatus(record);return `<article class="budget-history-card"><h4>${recruitmentEscape(record.producto_nombre_snapshot)}</h4><div class="muted">${recruitmentEscape(record.codigo)} · ${recruitmentDateTime(record.creado_en)}</div><div class="budget-history-meta"><span class="badge ${state.key!=='current'?'budget-state-'+state.key:''}">${recruitmentEscape(state.label)}</span><span class="badge">${recruitmentEscape(record.modalidad_snapshot)}</span><span class="badge">${budgetCurrency(record.total_snapshot)}</span></div><div class="applicant-actions"><button class="btn btn2" type="button" onclick="useSavedBudget('${record.id}','share')">COMPARTIR IMAGEN</button><button class="btn btn2" type="button" onclick="useSavedBudget('${record.id}','download')">DESCARGAR</button><button class="btn good" type="button" onclick="useSavedBudget('${record.id}','whatsapp')">WHATSAPP</button></div></article>`}).join('')||'<p class="muted">Todavía no generaste presupuestos.</p>';
+  sellerBudgetCache=data||[];renderSellerBudgetHistory(list);
 }
+
+function renderSellerBudgetHistory(list){list.innerHTML=sellerBudgetCache.map(record=>{const state=budgetStatus(record);return `<article class="budget-history-card"><h4>${recruitmentEscape(record.producto_nombre_snapshot)}</h4><div class="muted">${recruitmentEscape(record.codigo)} · ${recruitmentDateTime(record.creado_en)}</div><div class="budget-history-meta"><span class="badge ${state.key!=='current'?'budget-state-'+state.key:''}">${recruitmentEscape(state.label)}</span><span class="badge">${recruitmentEscape(record.modalidad_snapshot)}</span><span class="badge">${budgetCurrency(record.total_snapshot)}</span></div><div class="applicant-actions"><button class="btn btn2" type="button" onclick="useSavedBudget('${record.id}','share')">COMPARTIR IMAGEN</button><button class="btn btn2" type="button" onclick="useSavedBudget('${record.id}','download')">DESCARGAR</button><button class="btn good" type="button" onclick="useSavedBudget('${record.id}','whatsapp')">WHATSAPP</button></div></article>`}).join('')||'<p class="muted">Todavía no generaste presupuestos.</p>'}
 
 async function useSavedBudget(id,action){const record=sellerBudgetCache.find(item=>item.id===id);if(!record)return;activeBudgetShare={record,quote:record.condiciones_snapshot||{},blob:null};if(action==='share')return shareActiveBudgetImage();if(action==='download')return downloadActiveBudgetImage();return shareActiveBudgetWhatsApp()}
 
 async function loadAdminBudgets(){
   const list=document.getElementById('adminBudgetList');if(!list)return;list.innerHTML='<p class="muted">Cargando presupuestos...</p>';
-  if(recruitmentIsDemo()){list.innerHTML='<p class="muted">Modo demostración: no se consultan presupuestos reales.</p>';return}
+  if(recruitmentIsDemo()){adminBudgetCache=[recruitmentDemoBudgetRecord()];renderAdminBudgetHistory(list);return}
   const {data,error}=await sb.from('presupuestos').select('*,vendedores(nombre),clientes(nombre)').order('creado_en',{ascending:false}).limit(200);
   if(error){list.innerHTML=`<p class="muted">${recruitmentSchemaMissing(error)?'La migración de presupuestos todavía no está instalada en este entorno de prueba.':recruitmentEscape(error.message)}</p>`;return}
-  adminBudgetCache=data||[];list.innerHTML=adminBudgetCache.map(record=>{const state=budgetStatus(record);return `<article class="budget-history-card"><div class="applicant-head"><div><h4>${recruitmentEscape(record.producto_nombre_snapshot)}</h4><div class="muted">${recruitmentEscape(record.codigo)} · ${recruitmentDateTime(record.creado_en)}</div></div><span class="badge ${state.key!=='current'?'budget-state-'+state.key:''}">${recruitmentEscape(state.label)}</span></div><div class="applicant-meta"><div><b>Vendedor</b>${recruitmentEscape(record.vendedores?.nombre||'—')}</div><div><b>Prospecto / cliente</b>${recruitmentEscape(record.clientes?.nombre||record.prospecto_nombre||'No informado')}</div><div><b>Condición</b>${recruitmentEscape(record.modalidad_snapshot)} · ${budgetCurrency(record.total_snapshot)}</div></div></article>`}).join('')||'<p class="muted">Todavía no hay presupuestos guardados.</p>';
+  adminBudgetCache=data||[];renderAdminBudgetHistory(list);
 }
+
+function renderAdminBudgetHistory(list){list.innerHTML=adminBudgetCache.map(record=>{const state=budgetStatus(record);return `<article class="budget-history-card"><div class="applicant-head"><div><h4>${recruitmentEscape(record.producto_nombre_snapshot)}</h4><div class="muted">${recruitmentEscape(record.codigo)} · ${recruitmentDateTime(record.creado_en)}</div></div><span class="badge ${state.key!=='current'?'budget-state-'+state.key:''}">${recruitmentEscape(state.label)}</span></div><div class="applicant-meta"><div><b>Vendedor</b>${recruitmentEscape(record.vendedores?.nombre||'—')}</div><div><b>Prospecto / cliente</b>${recruitmentEscape(record.clientes?.nombre||record.prospecto_nombre||'No informado')}</div><div><b>Condición</b>${recruitmentEscape(record.modalidad_snapshot)} · ${budgetCurrency(record.total_snapshot)}</div></div></article>`}).join('')||'<p class="muted">Todavía no hay presupuestos guardados.</p>'}

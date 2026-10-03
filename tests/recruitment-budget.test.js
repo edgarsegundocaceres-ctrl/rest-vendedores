@@ -59,8 +59,15 @@ test('el texto compartible usa los valores congelados del presupuesto',()=>{
 
 test('la ruta pública se evalúa antes que el inicio autenticado',()=>{
   assert.match(html,/sellerApplicationRoute=qs\.get\('postularme'\)==='1'/);
-  assert.match(html,/if\(sellerApplicationRoute\)bootSellerRecruitment\(\);else if\(portalToken\)/);
+  assert.match(html,/else if\(sellerApplicationRoute\)bootSellerRecruitment\(\);else if\(portalToken\)/);
   assert.match(html,/La solicitud no crea un usuario ni otorga acceso al sistema/);
+});
+
+test('las demos de administración y presupuesto no usan el arranque autenticado',()=>{
+  assert.match(html,/recruitmentDemoRoute==='admin-captacion'\)bootRecruitmentAdminDemo\(\)/);
+  assert.match(html,/recruitmentDemoRoute==='presupuesto-captacion'\)bootRecruitmentBudgetDemo\(\)/);
+  assert.match(script,/Modo demostración aislado/);
+  assert.match(script,/if\(recruitmentIsDemo\(\)\)\{[\s\S]*data=\{presupuesto:record,cotizacion:record\.condiciones_snapshot\}/);
 });
 
 test('la UI reutiliza el alta segura existente para convertir al postulante',()=>{
@@ -107,8 +114,7 @@ test('el presupuesto conserva snapshot, vendedor y conversión posterior',()=>{
 });
 
 test('el service worker incluye los recursos nuevos y cambia la versión de caché',()=>{
-  assert.match(serviceWorker,/rest-shell-v1\.4\.0/);
+  assert.match(serviceWorker,/rest-shell-v1\.4\.1/);
   assert.match(serviceWorker,/captacion-vendedores\.css/);
   assert.match(serviceWorker,/captacion-vendedores\.js/);
 });
-

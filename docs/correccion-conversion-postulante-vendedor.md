@@ -90,19 +90,28 @@ No existe una columna de contraseña y la contraseña no se registra en logs ni 
 - Caso aprobado preexistente: la reparación fue ensayada en rollback y produjo un vendedor pendiente, vínculo e historial de reparación sin duplicar.
 - Verificación posterior: funciones de prueba y datos ficticios no quedaron persistidos.
 - `git diff --check`: correcto.
+- Preview separado desplegado desde la rama correctiva: correcto.
+- Página pública de captación verificada en navegador: carga completa y formulario disponible en modo demostración.
+- Administración verificada en navegador: al aprobar, conserva la ficha original, muestra `APROBADO`, crea el bloque **Vendedor vinculado**, etiqueta al vendedor como **Pendiente de acceso** y ofrece **CREAR ACCESO SEGURO**.
+- No se registraron errores propios de la aplicación en la consola del preview.
 
-La verificación visual automatizada local no pudo ejecutarse porque la utilidad `agent-browser` no está instalada y el navegador remoto bloquea `localhost`. Sí se verificaron estáticamente el DOM, las rutas y la sintaxis; la prueba visual interactiva queda para el preview.
+Preview separado (protegido por Vercel):
+
+```text
+https://rest-vendedores-6qug5smyn-edgarsegundocaceres-1114.vercel.app/?demo=admin-captacion
+```
+
+El enlace compartido temporal se entrega fuera del repositorio. La rama remota es `fix/postulante-vendedor-conversion`.
 
 ## Estado de publicación
 
-Esta rama no modifica `main`. La migración correctiva y la nueva versión de la Edge Function todavía no deben aplicarse al proyecto activo hasta recibir autorización expresa. Por esa razón, el caso aprobado existente sigue intacto en producción; la reparación ya fue validada con rollback y queda lista para ejecutarse de forma idempotente después de instalar la migración.
+Esta rama no modifica `main`. La migración correctiva y la nueva versión de la Edge Function todavía no se aplicaron al proyecto activo porque requieren autorización expresa. Por esa razón, el caso aprobado existente sigue intacto en producción; la reparación ya fue validada con rollback y queda lista para ejecutarse de forma idempotente después de instalar la migración.
 
 Para completar la prueba punta a punta real hacen falta, en este orden:
 
 1. aplicar la migración al proyecto REST autorizado;
 2. desplegar `crear-vendedor` con verificación JWT;
 3. ejecutar la reparación idempotente del caso aprobado;
-4. publicar la rama en un preview;
-5. configurar un acceso ficticio, iniciar sesión como vendedor y comprobar Portal, permisos y atribución de presupuesto;
-6. eliminar el usuario/datos ficticios de esa prueba si se utiliza la base activa;
-7. detenerse antes de cualquier merge a `main` o producción.
+4. configurar un acceso ficticio, iniciar sesión como vendedor y comprobar Portal, permisos y atribución de presupuesto;
+5. eliminar el usuario/datos ficticios de esa prueba si se utiliza la base activa;
+6. detenerse antes de cualquier merge a `main` o producción.

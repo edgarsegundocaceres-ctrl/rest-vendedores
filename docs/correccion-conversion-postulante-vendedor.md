@@ -1,8 +1,11 @@
 # APP INTEGRAL REST — Corrección Postulante → Vendedor
 
-Fecha: 4 de octubre de 2026  
-Rama: `fix/postulante-vendedor-conversion`  
-Base: `origin/main` (`77d0eef`)  
+Fecha de actualización: 5 de octubre de 2026
+
+Rama de consolidación: `fix/admin-vendedores-layout-copy-link`
+
+Base: `origin/main` (`77d0eef`)
+
 Repositorio: `edgarsegundocaceres-ctrl/rest-vendedores`
 
 ## Alcance
@@ -71,6 +74,7 @@ No existe una columna de contraseña y la contraseña no se registra en logs ni 
 
 ## Archivos
 
+- `captacion-vendedores.css`
 - `captacion-vendedores.js`
 - `index.html`
 - `sw.js`
@@ -78,40 +82,29 @@ No existe una columna de contraseña y la contraseña no se registra en logs ni 
 - `supabase/functions/crear-vendedor/index.ts`
 - `tests/recruitment-budget.test.js`
 
-## Pruebas realizadas sin persistencia
+## Pruebas y verificaciones
 
-- 17 pruebas automáticas de JavaScript y contratos de seguridad: correctas.
-- Sintaxis de `captacion-vendedores.js` e scripts embebidos: correcta.
+- 19 pruebas automáticas de JavaScript, responsive y contratos de seguridad: correctas.
+- Sintaxis de `captacion-vendedores.js` y scripts embebidos: correcta.
 - Migración completa ejecutada dentro de `BEGIN … ROLLBACK`: correcta.
 - Postulación ficticia → aprobación → vendedor provisional: correcta.
 - Segunda aprobación: devolvió el mismo `vendedor_id` y no duplicó el historial.
 - Reutilización de un vendedor real con Auth/rol dentro de rollback: correcta.
 - Vínculo y activación idempotentes dentro de rollback: correctos.
-- Caso aprobado preexistente: la reparación fue ensayada en rollback y produjo un vendedor pendiente, vínculo e historial de reparación sin duplicar.
+- Caso aprobado preexistente: reparado y vinculado a un vendedor pendiente de acceso sin duplicar.
 - Verificación posterior: funciones de prueba y datos ficticios no quedaron persistidos.
 - `git diff --check`: correcto.
-- Preview separado desplegado desde la rama correctiva: correcto.
+- Preview separado desplegado desde la rama de consolidación: correcto.
 - Página pública de captación verificada en navegador: carga completa y formulario disponible en modo demostración.
 - Administración verificada en navegador: al aprobar, conserva la ficha original, muestra `APROBADO`, crea el bloque **Vendedor vinculado**, etiqueta al vendedor como **Pendiente de acceso** y ofrece **CREAR ACCESO SEGURO**.
+- La tarjeta **Vendedores REST** y sus pestañas se adaptan a escritorio y a los breakpoints móviles sin superposición ni scroll horizontal.
+- **COPIAR LINK PÚBLICO** conserva la pantalla actual, copia la URL pública canónica y muestra **Link copiado**; incluye fallback para navegadores sin Clipboard API.
 - No se registraron errores propios de la aplicación en la consola del preview.
-
-Preview separado (protegido por Vercel):
-
-```text
-https://rest-vendedores-6qug5smyn-edgarsegundocaceres-1114.vercel.app/?demo=admin-captacion
-```
-
-El enlace compartido temporal se entrega fuera del repositorio. La rama remota es `fix/postulante-vendedor-conversion`.
 
 ## Estado de publicación
 
-Esta rama no modifica `main`. La migración correctiva y la nueva versión de la Edge Function todavía no se aplicaron al proyecto activo porque requieren autorización expresa. Por esa razón, el caso aprobado existente sigue intacto en producción; la reparación ya fue validada con rollback y queda lista para ejecutarse de forma idempotente después de instalar la migración.
+La migración `20261004145535_fix_postulante_vendedor_conversion` ya está registrada en el proyecto Supabase de APP INTEGRAL REST. La Edge Function `crear-vendedor` está activa con verificación JWT. No se debe volver a ejecutar la migración ni repetir la reparación del registro existente.
 
-Para completar la prueba punta a punta real hacen falta, en este orden:
+La prueba real de postulación, aprobación, creación de acceso, activación, login como vendedor, generación de presupuesto y atribución al vendedor fue satisfactoria. Las políticas RLS y las funciones administrativas continúan exigiendo el rol correspondiente.
 
-1. aplicar la migración al proyecto REST autorizado;
-2. desplegar `crear-vendedor` con verificación JWT;
-3. ejecutar la reparación idempotente del caso aprobado;
-4. configurar un acceso ficticio, iniciar sesión como vendedor y comprobar Portal, permisos y atribución de presupuesto;
-5. eliminar el usuario/datos ficticios de esa prueba si se utiliza la base activa;
-6. detenerse antes de cualquier merge a `main` o producción.
+La consolidación del frontend y su despliegue deben realizarse desde la rama indicada, después de verificar las diferencias y las pruebas, mediante el flujo normal del repositorio y Vercel.

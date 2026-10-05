@@ -74,7 +74,7 @@ No existe una columna de contraseña y la contraseña no se registra en logs ni 
 - `captacion-vendedores.js`
 - `index.html`
 - `sw.js`
-- `supabase/migrations/20261004143339_fix_postulante_vendedor_conversion.sql`
+- `supabase/migrations/20261004145535_fix_postulante_vendedor_conversion.sql`
 - `supabase/functions/crear-vendedor/index.ts`
 - `tests/recruitment-budget.test.js`
 

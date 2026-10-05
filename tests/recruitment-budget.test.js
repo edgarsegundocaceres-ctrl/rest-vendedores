@@ -9,12 +9,15 @@ const root=path.resolve(__dirname,'..');
 const script=fs.readFileSync(path.join(root,'captacion-vendedores.js'),'utf8');
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const migration=fs.readFileSync(path.join(root,'supabase/migrations/20261003175908_captacion_vendedores_presupuestos.sql'),'utf8');
+const conversionMigration=fs.readFileSync(path.join(root,'supabase/migrations/20261004145535_fix_postulante_vendedor_conversion.sql'),'utf8');
+const createSellerFunction=fs.readFileSync(path.join(root,'supabase/functions/crear-vendedor/index.ts'),'utf8');
 const serviceWorker=fs.readFileSync(path.join(root,'sw.js'),'utf8');
+const recruitmentStyles=fs.readFileSync(path.join(root,'captacion-vendedores.css'),'utf8');
 
 function loadHelpers(){
-  const sandbox={console,crypto:webcrypto,Intl,Date,URLSearchParams,location:{search:''},navigator:{},setTimeout,clearTimeout};
+  const sandbox={console,crypto:webcrypto,Intl,Date,URL,URLSearchParams,location:{search:''},navigator:{},setTimeout,clearTimeout};
   vm.createContext(sandbox);
-  vm.runInContext(`${script}\n;globalThis.__helpers={validateSellerApplication,budgetPaymentLabel,budgetShareText,secureTemporaryPassword};`,sandbox);
+  vm.runInContext(`${script}\n;globalThis.__helpers={validateSellerApplication,budgetPaymentLabel,budgetShareText,secureTemporaryPassword,sellerRecruitmentPublicUrl};`,sandbox);
   return sandbox.__helpers;
 }
 
@@ -70,10 +73,72 @@ test('las demos de administración y presupuesto no usan el arranque autenticado
   assert.match(script,/if\(recruitmentIsDemo\(\)\)\{[\s\S]*data=\{presupuesto:record,cotizacion:record\.condiciones_snapshot\}/);
 });
 
-test('la UI reutiliza el alta segura existente para convertir al postulante',()=>{
+test('administración copia el enlace público canónico sin navegar',()=>{
+  const {sellerRecruitmentPublicUrl}=loadHelpers();
+  assert.equal(sellerRecruitmentPublicUrl('https://rest-vendedores.vercel.app/'),'https://rest-vendedores.vercel.app/?postularme=1');
+  assert.match(html,/id="copyPublicRecruitmentLinkBtn"[^>]*>COPIAR LINK PÚBLICO<\/button>/);
+  assert.match(html,/id="copyPublicRecruitmentLinkStatus"[^>]*aria-live="polite"/);
+  assert.doesNotMatch(html,/ABRIR LINK PÚBLICO/);
+  const copyFlow=script.slice(script.indexOf('async function copyTextWithFallback'),script.indexOf('function initRecruitmentUi'));
+  assert.match(copyFlow,/navigator\.clipboard\?\.writeText/);
+  assert.match(copyFlow,/document\.execCommand\('copy'\)/);
+  assert.match(copyFlow,/Link copiado/);
+  assert.doesNotMatch(copyFlow,/window\.open|location\.(href|assign|replace)/);
+});
+
+test('la cabecera y pestañas de Vendedores se adaptan sin scroll horizontal',()=>{
+  assert.match(html,/class="card seller-admin-card"/);
+  assert.match(recruitmentStyles,/\.seller-admin-header\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
+  assert.match(recruitmentStyles,/\.seller-admin-tabs\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(recruitmentStyles,/@media\(max-width:760px\)[\s\S]*\.seller-admin-tabs\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.doesNotMatch(recruitmentStyles,/\.seller-admin-tabs\{[^}]*overflow\s*:\s*auto/);
+});
+
+test('aprobar crea o vincula el vendedor y refresca el listado administrativo',()=>{
+  assert.match(script,/sb\.rpc\('aprobar_postulante_vendedor'/);
+  assert.match(script,/APROBAR Y PREPARAR VENDEDOR/);
+  assert.match(script,/if\(typeof loadAdmin==='function'\)await loadAdmin\(\)/);
   assert.match(script,/sb\.functions\.invoke\('crear-vendedor'/);
   assert.match(script,/sb\.rpc\('vincular_postulante_vendedor'/);
   assert.doesNotMatch(migration,/password\s+text/i);
+  assert.doesNotMatch(conversionMigration,/password\s+text/i);
+});
+
+test('la aprobación es idempotente, bloquea la postulación y prepara un vendedor sin acceso',()=>{
+  const approve=conversionMigration.slice(conversionMigration.indexOf('create or replace function public.aprobar_postulante_vendedor'),conversionMigration.indexOf('create or replace function public.activar_postulante_vendedor'));
+  assert.match(approve,/for update/);
+  assert.match(approve,/if v_postulante\.vendedor_id is not null/);
+  assert.match(approve,/insert into public\.vendedores/);
+  assert.match(approve,/'junior',[\s\S]*false,[\s\S]*false/);
+  assert.match(approve,/v_estado_anterior = 'aprobado' and v_vendedor_anterior is null/);
+  assert.match(approve,/'reparacion', true/);
+  assert.doesNotMatch(approve,/telefono_normalizado\s*=/);
+});
+
+test('la activación reutiliza el vendedor preparado y asigna el rol VENDEDOR atómicamente',()=>{
+  const activate=conversionMigration.slice(conversionMigration.indexOf('create or replace function public.activar_postulante_vendedor'),conversionMigration.indexOf('create or replace function public.vincular_postulante_vendedor'));
+  assert.match(activate,/insert into public\.perfiles/);
+  assert.match(activate,/'vendedor'/);
+  assert.match(activate,/update public\.vendedores[\s\S]*set user_id = p_usuario_id/);
+  assert.match(activate,/update public\.postulantes_vendedores[\s\S]*set estado = v_estado_final/);
+  assert.match(activate,/v_postulante\.estado in \('activo', 'suspendido'\)/);
+  assert.match(conversionMigration,/revoke all on function public\.activar_postulante_vendedor[\s\S]*from public, anon, authenticated/);
+  assert.match(conversionMigration,/grant execute on function public\.activar_postulante_vendedor[\s\S]*to authenticated/);
+});
+
+test('crear-vendedor conserva el alta manual y para postulantes no inserta otro vendedor',()=>{
+  assert.match(createSellerFunction,/if \(applicantId\)/);
+  const applicantPath=createSellerFunction.slice(createSellerFunction.indexOf('if (applicantId)'),createSellerFunction.indexOf('// Alta manual histórica'));
+  assert.match(applicantPath,/rpc\('activar_postulante_vendedor'/);
+  assert.match(applicantPath,/auth\.admin\.deleteUser\(userId\)/);
+  assert.doesNotMatch(applicantPath,/from\('vendedores'\)\s*\.insert/);
+  const manualPath=createSellerFunction.slice(createSellerFunction.indexOf('// Alta manual histórica'));
+  assert.match(manualPath,/from\('vendedores'\)\s*\.insert/);
+});
+
+test('el equipo distingue un vendedor aprobado pendiente de acceso',()=>{
+  assert.match(html,/function sellerAccessLabel\(x\)\{return !x\.user_id\?'Pendiente de acceso'/);
+  assert.match(script,/El vendedor ya figura en el equipo como Pendiente de acceso/);
 });
 
 test('la migración limita el flujo nuevo a Hogar y Celulares',()=>{
@@ -114,7 +179,7 @@ test('el presupuesto conserva snapshot, vendedor y conversión posterior',()=>{
 });
 
 test('el service worker incluye los recursos nuevos y cambia la versión de caché',()=>{
-  assert.match(serviceWorker,/rest-shell-v1\.4\.2/);
+  assert.match(serviceWorker,/rest-shell-v1\.4\.4/);
   assert.match(serviceWorker,/captacion-vendedores\.css/);
   assert.match(serviceWorker,/captacion-vendedores\.js/);
 });

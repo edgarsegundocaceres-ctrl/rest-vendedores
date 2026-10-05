@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- REST v1.4.3 candidato · Conversión trazable de postulantes a vendedores -->
+<!-- REST v1.4.4 candidato · Administración responsive y enlace público copiable -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -249,8 +249,11 @@ body.client-mode .wrap{max-width:620px;padding:0 14px 90px}
 <div class="nav"><button class="btn" data-tab="resumen">Resumen</button><button class="btn btn2" data-tab="vendedores">Vendedores</button><button class="btn btn2" data-tab="clientesAdmin">Clientes</button><button class="btn btn2" data-tab="interesesAdmin">Intereses</button><button class="btn btn2" data-tab="referidosAdmin">🎁 Referidos</button><button class="btn btn2" data-tab="catalogoAdmin">Administrar catálogo</button><button class="btn btn2" data-tab="ventas">Ventas</button><button class="btn btn2" data-tab="comisiones">Comisiones</button><button class="btn btn2" data-tab="objetivosAdmin">Objetivos y Premios</button><button class="btn btn2" data-tab="logisticaAdmin">Logística</button><button class="btn btn2" data-tab="comunicados">Comunicados</button></div>
 <section id="resumen" class="panel"><div class="card"><h3>Cupo mensual de financiación</h3><div class="big" id="adminQuotaText">Cargando...</div><div class="progress"><div id="adminQuotaBar"></div></div><div class="row"><input id="adminQuotaInput" class="input" type="number" placeholder="Cupo mensual disponible"><button class="btn" onclick="saveMonthlyQuota()">GUARDAR CUPO</button></div><p class="muted">Crédito personal, anticipo + cuotas y tarjetas consumen el 100% de la venta. Contado y entrega pactada no consumen cupo.</p></div><div class="grid"><div class="kpi">Ventas<div id="kVentas" class="big">0</div></div><div class="kpi">Facturación válida<div id="kFact" class="big">$0</div></div><div class="kpi">Pendientes<div id="kPend" class="big">0</div></div><div class="kpi">Comisiones pendientes<div id="kCom" class="big">$0</div></div></div><div id="adminLogAlert" class="card hide"><h3 style="margin-top:0">🚚 Logística en movimiento</h3><div id="adminLogAlertText"></div></div><div class="card"><h3>Ventas recientes</h3><div id="recent"></div></div></section>
 <section id="vendedores" class="panel hide">
-  <div class="card">
-    <div class="row stack"><div><h3 style="margin:0">Vendedores REST</h3><div class="muted">Equipo, postulaciones y presupuestos trazables</div></div><a class="btn btn2" href="?postularme=1" target="_blank" rel="noopener">ABRIR LINK PÚBLICO</a></div>
+  <div class="card seller-admin-card">
+    <div class="seller-admin-header">
+      <div class="seller-admin-header-copy"><h3>Vendedores REST</h3><div class="muted">Equipo, postulaciones y presupuestos trazables</div></div>
+      <div class="seller-public-link-action"><button id="copyPublicRecruitmentLinkBtn" class="btn btn2" type="button">COPIAR LINK PÚBLICO</button><span id="copyPublicRecruitmentLinkStatus" class="seller-copy-status" role="status" aria-live="polite"></span></div>
+    </div>
     <div class="seller-admin-tabs"><button class="btn" type="button" data-seller-admin-view="active">Vendedores</button><button class="btn btn2" type="button" data-seller-admin-view="applicants">Postulantes <span id="applicantPendingBadge" class="badge">0</span></button><button class="btn btn2" type="button" data-seller-admin-view="budgets">Presupuestos</button><button class="btn btn2" type="button" data-seller-admin-view="content">Contenido público</button></div>
   </div>
   <section id="sellerAdminActive" class="seller-admin-view">

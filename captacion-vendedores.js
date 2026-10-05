@@ -30,6 +30,7 @@ let recruitmentSellerCache=[];
 let adminBudgetCache=[];
 let sellerBudgetCache=[];
 let activeBudgetShare=null;
+let publicRecruitmentCopyTimer=null;
 
 function recruitmentEscape(value){return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))}
 function recruitmentDemoMode(){return new URLSearchParams(location.search).get('demo')||''}
@@ -38,6 +39,22 @@ function nullableBoolean(value){return value==='true'?true:value==='false'?false
 function recruitmentDate(value){if(!value)return '—';const match=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));return match?`${match[3]}/${match[2]}/${match[1]}`:new Date(value).toLocaleDateString('es-AR')}
 function recruitmentDateTime(value){if(!value)return '—';try{return new Intl.DateTimeFormat('es-AR',{dateStyle:'short',timeStyle:'short',timeZone:'America/Argentina/Buenos_Aires'}).format(new Date(value))}catch{return '—'}}
 function applicationStatusBadge(status){return `<span class="badge applicant-status-${recruitmentEscape(status)}">${recruitmentEscape(APPLICANT_STATUS_LABELS[status]||status)}</span>`}
+
+function sellerRecruitmentPublicUrl(baseUrl){return new URL('?postularme=1',baseUrl).toString()}
+async function copyTextWithFallback(text){
+  try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);return true}}catch{}
+  const field=document.createElement('textarea');field.value=text;field.setAttribute('readonly','');field.style.position='fixed';field.style.left='-9999px';field.style.opacity='0';document.body.appendChild(field);field.focus();field.select();field.setSelectionRange(0,field.value.length);
+  let copied=false;try{copied=document.execCommand('copy')}catch{}field.remove();return copied;
+}
+function showPublicRecruitmentCopyStatus(message,isError=false){
+  const status=document.getElementById('copyPublicRecruitmentLinkStatus');if(!status)return;
+  clearTimeout(publicRecruitmentCopyTimer);status.textContent=message;status.classList.toggle('error',isError);
+  publicRecruitmentCopyTimer=setTimeout(()=>{status.textContent='';status.classList.remove('error')},2400);
+}
+async function copyPublicRecruitmentLink(){
+  const url=sellerRecruitmentPublicUrl(REST_PUBLIC_URL),copied=await copyTextWithFallback(url);
+  showPublicRecruitmentCopyStatus(copied?'Link copiado':'No se pudo copiar',!copied);
+}
 
 function applyRecruitmentContent(content={}){
   const c={...RECRUITMENT_DEFAULT_CONTENT,...content};
@@ -165,6 +182,7 @@ async function submitSellerApplication(event){
 
 function initRecruitmentUi(){
   document.getElementById('sellerApplicationForm')?.addEventListener('submit',submitSellerApplication);
+  document.getElementById('copyPublicRecruitmentLinkBtn')?.addEventListener('click',copyPublicRecruitmentLink);
   document.querySelectorAll('[data-seller-admin-view]').forEach(button=>button.addEventListener('click',()=>showSellerAdminView(button.dataset.sellerAdminView)));
   document.getElementById('applicantSearch')?.addEventListener('input',renderAdminApplicants);
   document.getElementById('applicantStatusFilter')?.addEventListener('change',renderAdminApplicants);

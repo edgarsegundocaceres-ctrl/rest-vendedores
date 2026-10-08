@@ -26,7 +26,7 @@ El Work interrumpido había dejado un checkout con esta rama y el commit local *
 | Ocultamiento de 9 cuotas en pantallas pequeñas | INCORRECTO | Corregido. |
 | Reconfirmación ante cambios de precio, origen directo y pruebas financieras | PARCIAL | Completados y verificados localmente. |
 | Migración de catálogo en Supabase operativo | NO IMPLEMENTADO | Preparada; permanece pendiente. |
-| Rama remota, PR y preview de catálogo | NO IMPLEMENTADO | Se preparan como entrega revisable. |
+| Rama remota, PR y preview de catálogo | NO IMPLEMENTADO | Publicados en la rama de trabajo y PR borrador #3; sin producción. |
 | Tablas o motores paralelos de producto, cliente, venta o comisión | NO DETECTADO | No se crean duplicados. |
 
 | Área revisada | Hallazgo | Decisión |
@@ -120,6 +120,7 @@ Las fixtures de pruebas contienen funciones y la migración financiera ya existe
 - Verificación de sintaxis de `catalogo-publico.js` e inline JavaScript: aprobada.
 - `git diff --check`: aprobado.
 - Inspección read-only del Supabase real para tablas, RLS, funciones, datos de referencia y reglas: aprobada; no hubo escrituras.
+- Revisión del preview en navegador: catálogo con fotos reales; flujo completo a 320 px hasta Solicitud recibida; vendedor y Administración a 390 px; reformulación de 6 a 9 cuotas sin alterar el original y conversión demostrativa con historial. Sin scroll horizontal en las superficies nuevas revisadas. Se corrigió una colisión de estilos que ocultaba el texto de Mi catálogo.
 
 Ejemplo SQL verificado para contado $100.000: 6 cuotas, total $157.000; 9 cuotas, total $199.000. Se redondean cuotas a centavos y el motor existente ajusta el cierre al total. Los importes reales provienen del cálculo SQL; los valores fijos del demo son únicamente demostrativos.
 
@@ -140,7 +141,7 @@ El preview usa datos demostrativos aislados y no escribe en el Supabase operativ
 - `?demo=mi-catalogo`
 - `?demo=solicitudes-admin`
 
-La URL remota se incorpora al informe de entrega después de crear el deployment de preview.
+PR borrador: https://github.com/edgarsegundocaceres-ctrl/rest-vendedores/pull/3. El informe de entrega incluye la URL del preview final, el commit desplegado y evidencia visual.
 
 ## Decisiones pendientes antes de producción
 

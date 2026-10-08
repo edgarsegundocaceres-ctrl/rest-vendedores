@@ -21,7 +21,7 @@ function catalogPreviewClient(){const blocked=()=>{throw new Error('Esta vista p
 
 function catalogEl(id){return typeof document==='undefined'?null:document.getElementById(id)}
 function catalogEscape(value){return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))}
-function catalogMoney(value){return new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(value)||0)}
+function catalogMoney(value){return new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0)}
 function catalogDateTime(value){if(!value)return '—';const date=new Date(value);return Number.isNaN(date.getTime())?'—':date.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}
 function catalogDigits(value){return String(value||'').replace(/\D/g,'')}
 function catalogWhatsAppPhone(value){

@@ -13,7 +13,7 @@ const migration=fs.readFileSync(path.join(root,'supabase/migrations/202610081455
 function helpers(){
   const sandbox={console,Intl,Date,URL,URLSearchParams};
   vm.createContext(sandbox);
-  vm.runInContext(`${script}\n;globalThis.__helpers={catalogPublicUrl,catalogDemoOptions,catalogNormalizeClient,catalogValidateClient,catalogModalityLabel,catalogRequestStateLabel,catalogWhatsAppPhone};`,sandbox);
+  vm.runInContext(`${script}\n;globalThis.__helpers={catalogPublicUrl,catalogDemoOptions,catalogNormalizeClient,catalogValidateClient,catalogModalityLabel,catalogRequestStateLabel,catalogWhatsAppPhone,catalogMoney};`,sandbox);
   return sandbox.__helpers;
 }
 
@@ -60,13 +60,15 @@ test('el catálogo expone solo productos activos de Hogar y Celulares',()=>{
 });
 
 test('contado, 6 cuotas y 9 cuotas reproducen las reglas comerciales actuales',()=>{
-  const {catalogDemoOptions}=helpers();
+  const {catalogDemoOptions,catalogMoney}=helpers();
   const quote=catalogDemoOptions(100000);
   assert.equal(quote.contado.total,100000);
   assert.equal(quote.credito_6.total,157000);
   assert.equal(quote.credito_6.valor_cuota,26166.67);
   assert.equal(quote.credito_9.total,199000);
   assert.equal(quote.credito_9.valor_cuota,22111.11);
+  assert.match(catalogMoney(quote.credito_6.valor_cuota),/26\.166,67/);
+  assert.match(catalogMoney(quote.credito_9.valor_cuota),/22\.111,11/);
   assert.match(migration,/precio_contado\*\(1\+0\.095\*6\)/);
   assert.match(migration,/precio_contado\*\(1\+0\.11\*9\)/);
 });

@@ -123,6 +123,8 @@ Las fixtures de pruebas contienen funciones y la migración financiera ya existe
 
 Ejemplo SQL verificado para contado $100.000: 6 cuotas, total $157.000; 9 cuotas, total $199.000. Se redondean cuotas a centavos y el motor existente ajusta el cierre al total. Los importes reales provienen del cálculo SQL; los valores fijos del demo son únicamente demostrativos.
 
+La presentación pública conserva los centavos de la cuota. `tests/catalogo-mobile-preview.html` permite revisar las seis superficies con un viewport real de iframe de 320, 360, 390 o 412 px, sin cambiar datos ni configuración del navegador. No sustituye una prueba física en Android.
+
 Comandos reproducibles: `node --test tests/*.test.js`; los smoke requieren `PGLITE_MODULE_DIR` y `JSDOM_MODULE_DIR` apuntando a dependencias instaladas (`@electric-sql/pglite@0.3.14`, `jsdom@26.1.0`).
 
 **Límite de validación:** la migración no se ejecutó contra Supabase remoto. La prueba PostgreSQL local no sustituye el flujo integrado de Auth/PostgREST en una rama o entorno no operativo. El preview utiliza solicitudes y vendedores ficticios y no convierte datos reales.

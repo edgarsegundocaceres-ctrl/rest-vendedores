@@ -40,6 +40,7 @@ async function render(route){
   assert.equal(d.getElementById('catalogPublicRoot').classList.contains('hide'),false);
   assert.equal(d.getElementById('catalogPublicView').classList.contains('hide'),false);
   assert.equal(d.querySelectorAll('.catalog-product-card').length,4);
+  assert.throws(()=>w.eval("sb.from('clientes')"),/únicamente datos demostrativos/);
   w.catalogOpenProduct('7abfd694-bb76-49e3-9699-69a188003aa7');
   assert.match(d.getElementById('catalogProductDetail').textContent,/Alacena 120 cm/);
   w.catalogBeginPurchase();w.catalogSelectModality('credito_6');w.catalogGoToStep(2);
@@ -48,6 +49,13 @@ async function render(route){
   d.getElementById('catalogCustomerForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
   assert.equal(d.getElementById('catalogReviewStep').classList.contains('hide'),false);
   assert.match(d.getElementById('catalogReviewSummary').textContent,/6 ×/);
+  // El cliente debe confirmar otra vez si cambiaron las condiciones en servidor.
+  w.eval(`catalogPublicState.demo=false;sb.rpc=async()=>({data:{ok:false,condiciones_actualizadas:true,mensaje:'Las condiciones cambiaron. Revisá los importes.',producto_actualizado:{...catalogPublicState.product,version_cotizacion:'actualizada',precio_contado:150000,opciones:catalogDemoOptions(150000)}}})`);
+  await w.catalogSubmitRequest();
+  assert.equal(d.getElementById('catalogReviewStep').classList.contains('hide'),false);
+  assert.match(d.getElementById('catalogSubmitStatus').textContent,/condiciones cambiaron/);
+  assert.match(d.getElementById('catalogReviewSummary').textContent,/235\.500/);
+  w.eval("sb.rpc=async()=>({data:{ok:true,codigo:'SC-DEMO-001'}})");
   await w.catalogSubmitRequest();
   assert.equal(d.getElementById('catalogSuccessView').classList.contains('hide'),false);
   assert.match(d.getElementById('catalogSuccessView').textContent,/Solicitud recibida/);
@@ -60,12 +68,24 @@ async function render(route){
   await adminDom.window.openAdminCatalogRequest('10000000-0000-4000-8000-000000000003');
   assert.match(adminDoc.getElementById('catalogRequestDetail').textContent,/Condiciones que vio el cliente/);
   assert.match(adminDoc.getElementById('catalogRequestDetail').textContent,/CONVERTIR EN VENTA/);
+  assert.equal(adminDoc.getElementById('adminCatalogFinalMode').value,'credito_6');
+  assert.equal(adminDoc.querySelector('[data-tab="catalogoAdmin"]').disabled,true);
+  assert.throws(()=>adminDom.window.eval("sb.rpc('convertir_solicitud_compra')"),/únicamente datos demostrativos/);
+  adminDoc.getElementById('adminCatalogFinalMode').value='credito_9';
+  await adminDom.window.adminCatalogSaveFinal('10000000-0000-4000-8000-000000000003');
+  assert.equal(adminDom.window.eval('adminCatalogRequests.find(r=>r.id.endsWith("0003")).snapshot_solicitado.seleccion.codigo'),'credito_6');
+  assert.equal(adminDoc.getElementById('adminCatalogFinalMode').value,'credito_9');
+  await adminDom.window.adminCatalogConvert('10000000-0000-4000-8000-000000000003');
+  assert.match(adminDoc.getElementById('catalogRequestDetail').textContent,/Convertida en venta/);
   adminDom.window.close();
 
   const sellerDom=await render('mi-catalogo');
   const sellerDoc=sellerDom.window.document;
   assert.equal(sellerDoc.getElementById('sellerRoot').classList.contains('hide'),false);
   assert.match(sellerDoc.getElementById('sellerCatalogLink').value,/\?catalogo=8d7e0f6a/);
+  assert.match(sellerDoc.getElementById('sellerCatalogLink').value,/demo=catalogo-publico/);
+  sellerDom.window.showSellerTab('sellerSale');
+  assert.equal(sellerDoc.getElementById('sellerSale').classList.contains('hide'),true);
   assert.match(sellerDoc.getElementById('sellerCatalogRequestPreview').textContent,/Alacena 120 cm/);
   sellerDom.window.close();
 

@@ -6,6 +6,21 @@ begin;
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 
+-- Campos comerciales en la fuente existente, sin otro catálogo.
+alter table public.productos
+  add column if not exists descripcion_publica text check (char_length(descripcion_publica) <= 1500),
+  add column if not exists catalogo_publico boolean not null default true;
+
+-- REST directo conserva NULL durante todo el circuito futuro.
+alter table public.ventas alter column vendedor_id drop not null;
+alter table public.cuentas_credito alter column vendedor_id drop not null;
+drop trigger if exists trg_al_entregar_venta on public.ventas;
+create trigger trg_al_entregar_venta before update of estado on public.ventas
+for each row when (new.vendedor_id is not null) execute function public.al_entregar_venta();
+drop trigger if exists trg_recalcular_mes_venta on public.ventas;
+create trigger trg_recalcular_mes_venta after insert or update of estado, fecha_entrega, monto_total on public.ventas
+for each row when (new.vendedor_id is not null) execute function public.al_cambiar_estado_venta();
+
 alter table public.vendedores
   add column if not exists catalogo_token uuid;
 
@@ -101,6 +116,7 @@ create table if not exists private.catalogo_solicitudes_rate_limit (
   fingerprint text not null,
   creado_en timestamptz not null default now()
 );
+alter table private.catalogo_solicitudes_rate_limit enable row level security;
 
 create index if not exists catalogo_solicitudes_rate_limit_busqueda_idx
   on private.catalogo_solicitudes_rate_limit (fingerprint, creado_en desc);
@@ -170,6 +186,12 @@ begin
     or new.primer_vencimiento is distinct from old.primer_vencimiento
     or new.notas is distinct from old.notas
     or new.estado is distinct from old.estado
+    or new.estado_comercial is distinct from old.estado_comercial
+    or new.snapshot_final is distinct from old.snapshot_final
+    or new.venta_id is distinct from old.venta_id
+    or new.cuenta_credito_id is distinct from old.cuenta_credito_id
+    or new.vendedor_id is distinct from old.vendedor_id
+    or new.convertido_en is distinct from old.convertido_en
   ) then
     raise exception 'Usá el circuito administrativo de solicitudes de compra';
   end if;
@@ -277,6 +299,7 @@ begin
   from public.productos p
   where p.id = p_producto_id
     and p.activo = true
+    and p.catalogo_publico = true
     and p.categoria in ('hogar','celulares')
     and p.precio_contado > 0;
   if not found then raise exception 'Producto REST no disponible'; end if;
@@ -289,30 +312,41 @@ begin
   from jsonb_array_elements(v_cotizacion->'credito_personal')
   where (value->>'cuotas')::integer = 9;
 
-  if v_seis is null or v_nueve is null then
-    raise exception 'El producto no tiene las opciones públicas requeridas';
-  end if;
-
-  return jsonb_build_object(
+  return jsonb_strip_nulls(jsonb_build_object(
     'contado', jsonb_build_object(
       'codigo','contado','titulo','Contado','total',round(v_producto.precio_contado,2),
       'anticipo',round(v_producto.precio_contado,2),'cantidad_cuotas',0,
       'valor_cuota',0,'frecuencia','unico'
     ),
-    'credito_6', jsonb_build_object(
+    'credito_6', case when v_seis is not null then jsonb_build_object(
       'codigo','credito_6','titulo','Crédito personal · 6 cuotas',
       'total',(v_seis->>'total')::numeric,'anticipo',0,'cantidad_cuotas',6,
       'valor_cuota',(v_seis->>'cuota')::numeric,'frecuencia','mensual',
-      'regla',jsonb_build_object('tipo','interes_simple_mensual','tasa_mensual',0.095)
-    ),
-    'credito_9', jsonb_build_object(
+      'regla',jsonb_build_object('fuente','cotizar_producto','tipo','interes_simple_mensual',
+        'tasa_mensual',round(((v_seis->>'total')::numeric/v_producto.precio_contado-1)/6,6))
+    ) end,
+    'credito_9', case when v_nueve is not null then jsonb_build_object(
       'codigo','credito_9','titulo','Crédito personal · 9 cuotas',
       'total',(v_nueve->>'total')::numeric,'anticipo',0,'cantidad_cuotas',9,
       'valor_cuota',(v_nueve->>'cuota')::numeric,'frecuencia','mensual',
-      'regla',jsonb_build_object('tipo','interes_simple_mensual','tasa_mensual',0.11)
-    )
-  );
+      'regla',jsonb_build_object('fuente','cotizar_producto','tipo','interes_simple_mensual',
+        'tasa_mensual',round(((v_nueve->>'total')::numeric/v_producto.precio_contado-1)/9,6))
+    ) end
+  ));
 end;
+$$;
+
+create or replace function private.proyectar_producto_catalogo(p_producto_id uuid)
+returns jsonb language sql stable set search_path = '' as $$
+  select datos || jsonb_build_object('version_cotizacion',md5(datos::text))
+  from (
+    select jsonb_build_object('id',p.id,'nombre',p.nombre,'categoria',p.categoria,
+      'subcategoria',p.subcategoria,'descripcion_publica',p.descripcion_publica,
+      'imagen_url',p.imagen_url,'precio_contado',p.precio_contado,
+      'opciones',private.opciones_catalogo_producto(p.id)) datos
+    from public.productos p where p.id=p_producto_id and p.activo and p.catalogo_publico
+      and p.categoria in ('hogar','celulares') and p.precio_contado>0
+  ) producto;
 $$;
 
 create or replace function private.controlar_limite_solicitud_catalogo()
@@ -338,6 +372,8 @@ begin
   v_ip := nullif(btrim(split_part(coalesce(v_headers->>'x-forwarded-for',''), ',', 1)), '');
   v_agente := nullif(left(coalesce(v_headers->>'user-agent',''), 300), '');
   v_fingerprint := md5(coalesce(v_ip,'sin-ip') || '|' || coalesce(v_agente,'sin-agente'));
+
+  perform pg_advisory_xact_lock(hashtextextended('rest-catalogo-limite:' || v_fingerprint,0));
 
   select count(*)::integer into v_intentos
   from private.catalogo_solicitudes_rate_limit r
@@ -380,18 +416,12 @@ begin
     return jsonb_build_object('disponible',false,'mensaje','Este catálogo no está disponible.');
   end if;
 
-  select coalesce(jsonb_agg(jsonb_build_object(
-    'id',p.id,
-    'nombre',p.nombre,
-    'categoria',p.categoria,
-    'subcategoria',p.subcategoria,
-    'imagen_url',p.imagen_url,
-    'precio_contado',p.precio_contado,
-    'opciones',private.opciones_catalogo_producto(p.id)
-  ) order by p.orden,p.nombre),'[]'::jsonb)
+  select coalesce(jsonb_agg(private.proyectar_producto_catalogo(p.id)
+    order by p.orden,p.nombre),'[]'::jsonb)
   into v_productos
   from public.productos p
   where p.activo = true
+    and p.catalogo_publico = true
     and p.categoria in ('hogar','celulares')
     and p.precio_contado > 0;
 
@@ -409,6 +439,7 @@ create or replace function public.crear_solicitud_compra_publica(
   p_modalidad text,
   p_cliente jsonb,
   p_clave_idempotencia uuid,
+  p_version_cotizacion text,
   p_sitio_web text default null
 )
 returns jsonb
@@ -438,9 +469,12 @@ declare
   v_frecuencia text;
   v_primer_vencimiento date;
   v_snapshot jsonb;
+  v_publico jsonb;
 begin
   if p_clave_idempotencia is null then raise exception 'Identificador de envío inválido'; end if;
   if p_cliente is null or jsonb_typeof(p_cliente) <> 'object' then raise exception 'Datos del cliente inválidos'; end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('rest-catalogo-envio:' || p_clave_idempotencia::text,0));
 
   select v.* into v_vendedor
   from public.vendedores v
@@ -454,7 +488,11 @@ begin
   from public.solicitudes_venta s
   where s.clave_idempotencia = p_clave_idempotencia;
   if found then
-    if v_existente.vendedor_id is distinct from v_vendedor.id then raise exception 'Clave de envío inválida'; end if;
+    if v_existente.vendedor_id is distinct from v_vendedor.id
+      or v_existente.producto_id is distinct from p_producto_id
+      or v_existente.snapshot_solicitado->'seleccion'->>'codigo' is distinct from lower(btrim(p_modalidad))
+      or v_existente.cliente_dni is distinct from regexp_replace(coalesce(p_cliente->>'dni',''),'[^0-9]','','g')
+    then raise exception 'Clave de envío inválida'; end if;
     return jsonb_build_object(
       'ok',true,'duplicado',true,'codigo',v_existente.codigo,
       'producto',v_existente.producto_nombre,'modalidad',v_existente.forma_pago
@@ -471,10 +509,17 @@ begin
   from public.productos p
   where p.id = p_producto_id
     and p.activo = true
+    and p.catalogo_publico = true
     and p.categoria in ('hogar','celulares')
-    and p.precio_contado > 0;
+    and p.precio_contado > 0
+  for share;
   if not found then raise exception 'El producto ya no está disponible'; end if;
 
+  v_publico := private.proyectar_producto_catalogo(v_producto.id);
+  if p_version_cotizacion is distinct from v_publico->>'version_cotizacion' then
+    return jsonb_build_object('ok',false,'condiciones_actualizadas',true,'producto_actualizado',v_publico,
+      'mensaje','Las condiciones del producto cambiaron. Revisá los nuevos importes y confirmá nuevamente.');
+  end if;
   v_opciones := private.opciones_catalogo_producto(v_producto.id);
   v_plan := v_opciones->lower(btrim(coalesce(p_modalidad,'')));
   if v_plan is null then raise exception 'Elegí Contado, 6 cuotas o 9 cuotas'; end if;
@@ -490,6 +535,7 @@ begin
 
   if char_length(v_nombre) not between 2 and 80 then raise exception 'Ingresá tu nombre'; end if;
   if char_length(v_apellido) not between 2 and 80 then raise exception 'Ingresá tu apellido'; end if;
+  if char_length(v_nombre_completo)>120 then raise exception 'El nombre completo no puede superar 120 caracteres'; end if;
   if char_length(v_dni) not between 6 and 9 then raise exception 'Ingresá un DNI válido'; end if;
   if char_length(v_telefono) not between 8 and 15 then raise exception 'Ingresá un WhatsApp válido'; end if;
   if char_length(v_localidad) not between 2 and 120 then raise exception 'Ingresá tu localidad'; end if;
@@ -510,6 +556,7 @@ begin
     'producto',jsonb_build_object(
       'id',v_producto.id,'nombre',v_producto.nombre,'categoria',v_producto.categoria,
       'subcategoria',v_producto.subcategoria,'imagen_url',v_producto.imagen_url,
+      'descripcion_publica',v_producto.descripcion_publica,
       'precio_contado',v_producto.precio_contado
     ),
     'opciones',v_opciones,
@@ -601,9 +648,7 @@ begin
     raise exception 'Cambio de estado no permitido';
   end if;
 
-  if v_estado = 'rechazada' then
-    perform set_config('app.catalogo_solicitud_autorizada',p_solicitud_id::text,true);
-  end if;
+  perform set_config('app.catalogo_solicitud_autorizada',p_solicitud_id::text,true);
 
   update public.solicitudes_venta
   set estado_comercial = v_estado,
@@ -631,13 +676,15 @@ begin
   );
 
   select s.* into v_solicitud from public.solicitudes_venta s where s.id = p_solicitud_id;
+  perform set_config('app.catalogo_solicitud_autorizada','',true);
   return to_jsonb(v_solicitud);
 end;
 $$;
 
 create or replace function public.guardar_condiciones_finales_solicitud(
   p_solicitud_id uuid,
-  p_modalidad text
+  p_modalidad text,
+  p_primer_vencimiento date default null
 )
 returns jsonb
 language plpgsql
@@ -669,8 +716,10 @@ begin
   v_opciones := private.opciones_catalogo_producto(v_producto.id);
   v_plan := v_opciones->lower(btrim(coalesce(p_modalidad,'')));
   if v_plan is null then raise exception 'Elegí Contado, 6 cuotas o 9 cuotas'; end if;
+  if (v_plan->>'cantidad_cuotas')::integer > 0
+    and p_primer_vencimiento < current_date then raise exception 'El primer vencimiento no puede estar en el pasado'; end if;
   v_plan := v_plan || jsonb_build_object(
-    'primer_vencimiento',case when (v_plan->>'cantidad_cuotas')::integer > 0 then current_date + 30 else null end
+    'primer_vencimiento',case when (v_plan->>'cantidad_cuotas')::integer > 0 then coalesce(p_primer_vencimiento,current_date + 30) else null end
   );
 
   v_snapshot := jsonb_build_object(
@@ -678,16 +727,20 @@ begin
     'producto',jsonb_build_object(
       'id',v_producto.id,'nombre',v_producto.nombre,'categoria',v_producto.categoria,
       'subcategoria',v_producto.subcategoria,'imagen_url',v_producto.imagen_url,
+      'descripcion_publica',v_producto.descripcion_publica,
       'precio_contado',v_producto.precio_contado
     ),
     'opciones',v_opciones,'seleccion',v_plan
   );
 
+  perform set_config('app.catalogo_solicitud_autorizada',p_solicitud_id::text,true);
   update public.solicitudes_venta
   set snapshot_final = v_snapshot,
       actualizado_comercial_por = auth.uid(),
       actualizado_en = now()
   where id = p_solicitud_id;
+
+  perform set_config('app.catalogo_solicitud_autorizada','',true);
 
   insert into public.solicitudes_compra_historial (
     solicitud_id,tipo,estado_anterior,estado_nuevo,detalle,actor_tipo,realizado_por
@@ -759,7 +812,6 @@ begin
     );
   end if;
   if v_solicitud.estado_comercial <> 'aprobada' then raise exception 'Primero aprobá la solicitud'; end if;
-  if v_solicitud.vendedor_id is null then raise exception 'Asigná un vendedor antes de convertir una solicitud directa'; end if;
   if v_solicitud.estado <> 'pendiente' then raise exception 'La solicitud interna ya fue resuelta'; end if;
 
   v_plan := coalesce(v_solicitud.snapshot_final->'seleccion',v_solicitud.snapshot_solicitado->'seleccion');
@@ -773,6 +825,9 @@ begin
     when v_cantidad > 0 then coalesce(nullif(v_plan->>'primer_vencimiento','')::date,current_date+30)
     else null
   end;
+  if v_cantidad > 0 and v_primer_vencimiento < current_date then
+    raise exception 'Definí un primer vencimiento vigente en las condiciones finales antes de convertir';
+  end if;
 
   perform set_config('app.catalogo_solicitud_autorizada',p_solicitud_id::text,true);
 
@@ -796,6 +851,8 @@ begin
       actualizado_en = now()
   where id = p_solicitud_id
   returning * into v_solicitud;
+
+  perform set_config('app.catalogo_solicitud_autorizada','',true);
 
   insert into public.solicitudes_compra_historial (
     solicitud_id,tipo,estado_anterior,estado_nuevo,detalle,actor_tipo,realizado_por
@@ -843,28 +900,29 @@ revoke all on function private.solicitudes_compra_historial_inmutable() from pub
 revoke all on function private.proteger_origen_solicitud_catalogo() from public, anon, authenticated;
 revoke all on function private.calcular_cotizacion_producto(uuid) from public, anon, authenticated;
 revoke all on function private.opciones_catalogo_producto(uuid) from public, anon, authenticated;
+revoke all on function private.proyectar_producto_catalogo(uuid) from public, anon, authenticated;
 revoke all on function private.controlar_limite_solicitud_catalogo() from public, anon, authenticated;
 
 revoke all on function public.cotizar_producto(uuid) from public, anon, authenticated;
 grant execute on function public.cotizar_producto(uuid) to authenticated, service_role;
 
 revoke all on function public.obtener_catalogo_publico(text) from public, anon, authenticated;
-revoke all on function public.crear_solicitud_compra_publica(text,uuid,text,jsonb,uuid,text) from public, anon, authenticated;
+revoke all on function public.crear_solicitud_compra_publica(text,uuid,text,jsonb,uuid,text,text) from public, anon, authenticated;
 revoke all on function public.actualizar_estado_solicitud_compra(uuid,text,text) from public, anon, authenticated;
-revoke all on function public.guardar_condiciones_finales_solicitud(uuid,text) from public, anon, authenticated;
+revoke all on function public.guardar_condiciones_finales_solicitud(uuid,text,date) from public, anon, authenticated;
 revoke all on function public.agregar_nota_solicitud_compra(uuid,text) from public, anon, authenticated;
 revoke all on function public.convertir_solicitud_compra(uuid) from public, anon, authenticated;
 
 grant execute on function public.obtener_catalogo_publico(text) to anon, authenticated;
-grant execute on function public.crear_solicitud_compra_publica(text,uuid,text,jsonb,uuid,text) to anon, authenticated;
+grant execute on function public.crear_solicitud_compra_publica(text,uuid,text,jsonb,uuid,text,text) to anon, authenticated;
 grant execute on function public.actualizar_estado_solicitud_compra(uuid,text,text) to authenticated;
-grant execute on function public.guardar_condiciones_finales_solicitud(uuid,text) to authenticated;
+grant execute on function public.guardar_condiciones_finales_solicitud(uuid,text,date) to authenticated;
 grant execute on function public.agregar_nota_solicitud_compra(uuid,text) to authenticated;
 grant execute on function public.convertir_solicitud_compra(uuid) to authenticated;
 grant execute on function public.obtener_catalogo_publico(text) to service_role;
-grant execute on function public.crear_solicitud_compra_publica(text,uuid,text,jsonb,uuid,text) to service_role;
+grant execute on function public.crear_solicitud_compra_publica(text,uuid,text,jsonb,uuid,text,text) to service_role;
 grant execute on function public.actualizar_estado_solicitud_compra(uuid,text,text) to service_role;
-grant execute on function public.guardar_condiciones_finales_solicitud(uuid,text) to service_role;
+grant execute on function public.guardar_condiciones_finales_solicitud(uuid,text,date) to service_role;
 grant execute on function public.agregar_nota_solicitud_compra(uuid,text) to service_role;
 grant execute on function public.convertir_solicitud_compra(uuid) to service_role;
 

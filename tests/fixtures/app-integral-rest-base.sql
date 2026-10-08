@@ -25,6 +25,8 @@ create table public.vendedores (
   dni text,
   telefono text,
   categoria_actual text not null default 'junior',
+  pro_permanente boolean not null default false,
+  actualizado_en timestamptz not null default now(),
   activo boolean not null default true
 );
 
@@ -46,7 +48,13 @@ create table public.productos_costos (
 );
 
 create table public.intereses_clientes (
-  id uuid primary key default gen_random_uuid()
+  id uuid primary key default gen_random_uuid(),
+  vendedor_id uuid references public.vendedores(id),
+  producto_id uuid references public.productos(id),
+  estado text,
+  venta_id uuid,
+  convertido_en timestamptz,
+  actualizado_en timestamptz default now()
 );
 
 create table public.clientes (
@@ -75,103 +83,50 @@ create table public.ventas (
   estado text not null,
   aprobada_por uuid references public.perfiles(id),
   interes_cliente_id uuid references public.intereses_clientes(id),
+  fecha_entrega timestamptz,
+  creado_en timestamptz not null default now(),
+  actualizado_en timestamptz not null default now(),
   fecha_venta timestamptz not null default now()
 );
 
-create table public.solicitudes_venta (
-  id uuid primary key default gen_random_uuid(),
-  clave_idempotencia uuid not null unique,
-  vendedor_id uuid not null references public.vendedores(id) on delete restrict,
-  interes_cliente_id uuid references public.intereses_clientes(id) on delete set null,
-  producto_id uuid not null references public.productos(id) on delete restrict,
-  unidad text not null check (unidad in ('hogar','celulares')),
-  producto_nombre text not null,
-  producto_precio_contado numeric not null,
-  cliente_nombre text not null,
-  cliente_dni text not null,
-  cliente_telefono text,
-  cliente_fecha_nacimiento date,
-  cliente_direccion text,
-  cliente_ciudad text,
-  cliente_telefono_referencia text,
-  forma_pago text not null,
-  monto_total numeric not null,
-  anticipo numeric not null default 0,
-  monto_financiado numeric generated always as (monto_total-anticipo) stored,
-  cantidad_cuotas integer not null default 0,
-  valor_cuota numeric not null default 0,
-  frecuencia text not null default 'unico',
-  primer_vencimiento date,
-  notas text,
-  estado text not null default 'pendiente',
-  motivo_revision text,
-  revisada_por uuid references public.perfiles(id),
-  revisada_en timestamptz,
-  venta_id uuid unique references public.ventas(id),
-  cuenta_credito_id uuid unique,
-  version integer not null default 1,
-  creado_en timestamptz not null default now(),
-  actualizado_en timestamptz not null default now(),
-  constraint solicitudes_venta_plan_coherente check (
-    (frecuencia='unico' and cantidad_cuotas=0 and valor_cuota=0 and primer_vencimiento is null)
-    or
-    (frecuencia in ('semanal','quincenal','mensual') and cantidad_cuotas>0 and valor_cuota>0
-      and primer_vencimiento is not null and monto_financiado>0
-      and abs(monto_financiado-cantidad_cuotas*valor_cuota)<=cantidad_cuotas*0.01)
-  )
+
+create table public.cupos_financiacion_mensual (mes date primary key, monto_cupo numeric not null);
+insert into public.cupos_financiacion_mensual values(date_trunc('month',current_date)::date,10000000);
+create table public.comisiones (
+ id uuid primary key default gen_random_uuid(), venta_id uuid not null unique references public.ventas(id),
+ vendedor_id uuid not null references public.vendedores(id), porcentaje numeric not null,
+ importe_original numeric not null, importe_vigente numeric not null,
+ porcentaje_conservado numeric not null default 100, estado text not null default 'generada',
+ generado_en timestamptz not null default now(), actualizado_en timestamptz not null default now()
 );
-
-create or replace function public.es_admin()
-returns boolean
-language sql
-stable
-security definer
-set search_path=''
-as $$
-  select exists(select 1 from public.perfiles p where p.id=auth.uid() and p.rol='admin' and p.activo=true);
-$$;
-
-create or replace function public.aprobar_solicitud_venta(p_solicitud_id uuid)
-returns jsonb
-language plpgsql
-security definer
-set search_path=''
-as $$
-declare
-  v_s public.solicitudes_venta%rowtype;
-  v_cliente uuid;
-  v_venta uuid;
-begin
-  if auth.uid() is null or not public.es_admin() then raise exception 'Solo Administración'; end if;
-  select * into v_s from public.solicitudes_venta where id=p_solicitud_id for update;
-  if not found then raise exception 'Solicitud no encontrada'; end if;
-  if v_s.estado='aprobada' then return to_jsonb(v_s); end if;
-  if v_s.estado<>'pendiente' then raise exception 'Solicitud no pendiente'; end if;
-  select id into v_cliente from public.clientes where regexp_replace(coalesce(dni,''),'[^0-9]','','g')=v_s.cliente_dni order by creado_en limit 1;
-  if v_cliente is null then
-    insert into public.clientes(nombre,dni,telefono,direccion,ciudad,creado_por_vendedor_id)
-    values(v_s.cliente_nombre,v_s.cliente_dni,v_s.cliente_telefono,v_s.cliente_direccion,v_s.cliente_ciudad,v_s.vendedor_id)
-    returning id into v_cliente;
-  end if;
-  insert into public.ventas(vendedor_id,cliente_id,producto,monto_total,forma_pago,anticipo_esperado,notas,estado,aprobada_por)
-  values(v_s.vendedor_id,v_cliente,v_s.producto_nombre,v_s.monto_total,v_s.forma_pago,v_s.anticipo,v_s.notas,'aprobada_entrega',auth.uid())
-  returning id into v_venta;
-  update public.solicitudes_venta set estado='aprobada',venta_id=v_venta,revisada_por=auth.uid(),revisada_en=now() where id=p_solicitud_id returning * into v_s;
-  return to_jsonb(v_s);
-end;
-$$;
-
-alter table public.solicitudes_venta enable row level security;
-create policy solicitudes_venta_select_propias_o_admin on public.solicitudes_venta for select to authenticated using (public.es_admin());
-revoke all on table public.solicitudes_venta from anon, authenticated;
-grant select on table public.solicitudes_venta to authenticated;
-grant all on table public.solicitudes_venta to service_role;
-grant execute on function public.aprobar_solicitud_venta(uuid) to authenticated;
-
+create table public.movimientos_vendedor (
+ id uuid primary key default gen_random_uuid(), vendedor_id uuid not null references public.vendedores(id),
+ tipo text not null, importe numeric not null, venta_id uuid references public.ventas(id),
+ comision_id uuid references public.comisiones(id), descripcion text, registrado_por uuid references public.perfiles(id)
+);
+create table public.estado_mensual_vendedor (
+ vendedor_id uuid not null references public.vendedores(id), mes date not null,
+ ventas_validas integer not null default 0, facturacion_valida numeric not null default 0,
+ categoria_provisional text not null default 'junior', basico_provisional numeric not null default 0,
+ actualizado_en timestamptz not null default now(), primary key(vendedor_id,mes)
+);
+create or replace function public.rest_set_actualizado_en() returns trigger language plpgsql as $$
+begin new.actualizado_en=now(); return new; end; $$;
+create or replace function public.mi_vendedor_id() returns uuid language sql stable security definer as $$
+ select id from public.vendedores where user_id=auth.uid() and activo limit 1; $$;
+create or replace function public.es_admin() returns boolean language sql stable security definer as $$
+ select exists(select 1 from public.perfiles where id=auth.uid() and rol='admin' and activo); $$;
+create or replace function public.es_vendedor_asignado_interes(p_interes_id uuid) returns boolean language sql stable as $$ select false; $$;
+grant usage on schema auth to anon,authenticated;
 insert into public.perfiles(id,nombre,rol,activo) values
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Administración REST','admin',true),
-  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Sofía Gómez','vendedor',true);
-insert into public.vendedores(id,user_id,nombre,categoria_actual,activo)
-values('cccccccc-cccc-4ccc-8ccc-cccccccccccc','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Sofía Gómez','pro',true);
-insert into public.productos(id,nombre,categoria,subcategoria,precio_contado,imagen_url,activo,orden)
-values('dddddddd-dddd-4ddd-8ddd-dddddddddddd','Alacena 120 cm','hogar','Muebles',100000,'https://example.test/alacena.jpg',true,1);
+ ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','Administración REST','admin',true),
+ ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Sofía Gómez','vendedor',true),
+ ('bbbbbbbb-bbbb-4bbb-8bbb-000000000002','Otro vendedor','vendedor',true);
+insert into public.vendedores(id,user_id,nombre,categoria_actual,activo) values
+ ('cccccccc-cccc-4ccc-8ccc-cccccccccccc','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Sofía Gómez','pro',true),
+ ('cccccccc-cccc-4ccc-8ccc-000000000002','bbbbbbbb-bbbb-4bbb-8bbb-000000000002','Otro vendedor','junior',true);
+insert into public.productos(id,nombre,categoria,subcategoria,precio_contado,imagen_url,activo,orden) values
+ ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','Alacena 120 cm','hogar','Muebles',100000,'https://example.test/alacena.jpg',true,1),
+ ('dddddddd-dddd-4ddd-8ddd-000000000002','Teléfono de prueba','celulares','Celulares',140000,null,true,2),
+ ('dddddddd-dddd-4ddd-8ddd-000000000003','Producto oculto','hogar','Muebles',20000,null,false,3),
+ ('dddddddd-dddd-4ddd-8ddd-000000000004','Modelo ajeno al canal','motos',null,200000,null,true,4);

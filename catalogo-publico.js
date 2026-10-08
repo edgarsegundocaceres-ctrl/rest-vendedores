@@ -16,11 +16,26 @@ let adminCatalogDemo=false;
 let sellerCatalogDemo=false;
 let catalogPurchaseUiReady=false;
 
+function catalogIsPreviewRoute(){return ['catalogo-publico','catalogo-producto','catalogo-formulario','catalogo-confirmacion','mi-catalogo','solicitudes-admin'].includes(new URLSearchParams(location.search).get('demo'))}
+function catalogPreviewClient(){const blocked=()=>{throw new Error('Esta vista previa usa únicamente datos demostrativos.')};return {from:blocked,rpc:blocked,auth:{signOut:async()=>({error:null})}}}
+
 function catalogEl(id){return typeof document==='undefined'?null:document.getElementById(id)}
 function catalogEscape(value){return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))}
 function catalogMoney(value){return new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(Number(value)||0)}
 function catalogDateTime(value){if(!value)return '—';const date=new Date(value);return Number.isNaN(date.getTime())?'—':date.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}
 function catalogDigits(value){return String(value||'').replace(/\D/g,'')}
+function catalogWhatsAppPhone(value){
+  let digits=catalogDigits(value);
+  if(digits.startsWith('00'))digits=digits.slice(2);
+  if(digits.length>=12&&digits.startsWith('54'))return digits;
+  digits=digits.replace(/^0/,'');
+  // Número argentino con código de área; quitar el 15 de marcación local.
+  const match=digits.match(/^(\d{2,4})15(\d{6,8})$/);
+  if(match&&digits.length===12)digits=match[1]+match[2];
+  return digits.length===10?'549'+digits:digits;
+}
+function catalogLocalDate(date=new Date()){return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,10)}
+function catalogDefaultDueDate(){const date=new Date();date.setDate(date.getDate()+30);return catalogLocalDate(date)}
 function catalogRound(value){return Math.round((Number(value)+Number.EPSILON)*100)/100}
 function catalogPublicUrl(token,origin=REST_CATALOG_PUBLIC_ORIGIN){const url=new URL(origin);url.search='';url.hash='';url.searchParams.set('catalogo',String(token||''));return url.toString()}
 function catalogModalityLabel(code){return CATALOG_MODE_LABELS[code]||String(code||'')}
@@ -63,6 +78,7 @@ function catalogValidateClient(input){
   const value=catalogNormalizeClient(input),errors={};
   if(value.nombre.length<2||value.nombre.length>80)errors.nombre='Ingresá tu nombre.';
   if(value.apellido.length<2||value.apellido.length>80)errors.apellido='Ingresá tu apellido.';
+  if(`${value.nombre} ${value.apellido}`.length>120)errors.apellido='Nombre y apellido: máximo 120 caracteres.';
   if(value.dni.length<6||value.dni.length>9)errors.dni='Ingresá un DNI válido.';
   if(value.telefono.length<8||value.telefono.length>15)errors.telefono='Ingresá un WhatsApp válido.';
   if(value.localidad.length<2||value.localidad.length>120)errors.localidad='Ingresá tu localidad.';
@@ -138,15 +154,16 @@ function catalogRenderProducts(){
   if(!catalogEl('catalogPublicProducts'))return;
   catalogEl('catalogPublicProducts').innerHTML=products.map(product=>{
     const six=product.opciones?.credito_6,nine=product.opciones?.credito_9;
-    return `<article class="catalog-product-card">${catalogProductImage(product)}<div class="catalog-product-body"><div class="catalog-product-category">${catalogEscape(product.categoria)}</div><h2>${catalogEscape(product.nombre)}</h2><div class="catalog-product-description">${catalogEscape(product.subcategoria||'')}</div><div><div class="catalog-cash-label">Precio contado</div><div class="catalog-cash-price">${catalogMoney(product.opciones?.contado?.total??product.precio_contado)}</div></div><div class="catalog-installments">${six?`<div class="catalog-installment">6 cuotas<b>${catalogMoney(six.valor_cuota)}</b></div>`:''}${nine?`<div class="catalog-installment">9 cuotas<b>${catalogMoney(nine.valor_cuota)}</b></div>`:''}</div><button class="catalog-primary" type="button" onclick="catalogOpenProduct('${catalogEscape(product.id)}')">VER PRODUCTO</button></div></article>`;
+    return `<article class="catalog-product-card">${catalogProductImage(product)}<div class="catalog-product-body"><div class="catalog-product-category">${catalogEscape(product.categoria)}</div><h2>${catalogEscape(product.nombre)}</h2><div class="catalog-product-description">${catalogEscape(product.descripcion_publica||product.subcategoria||'')}</div><div><div class="catalog-cash-label">Precio contado</div><div class="catalog-cash-price">${catalogMoney(product.opciones?.contado?.total??product.precio_contado)}</div></div><div class="catalog-installments">${six?`<div class="catalog-installment">6 cuotas<b>${catalogMoney(six.valor_cuota)}</b></div>`:''}${nine?`<div class="catalog-installment">9 cuotas<b>${catalogMoney(nine.valor_cuota)}</b></div>`:''}</div><button class="catalog-primary" type="button" onclick="catalogOpenProduct('${catalogEscape(product.id)}')">VER PRODUCTO</button></div></article>`;
   }).join('')||'<div class="catalog-state-card"><h2>Sin resultados</h2><p>Probá con otra búsqueda o categoría.</p></div>';
 }
 
 function catalogOpenProduct(id){
   const product=catalogPublicState.products.find(item=>item.id===id);if(!product)return;
   catalogPublicState.product=product;catalogPublicState.modality='';catalogPublicState.customer=null;
+  catalogPublicState.idempotency='';
   const plans=['credito_6','credito_9'].map(code=>product.opciones?.[code]).filter(Boolean);
-  catalogEl('catalogProductDetail').innerHTML=`<div class="catalog-detail-grid"><div class="catalog-detail-media">${catalogProductImage(product,true)}</div><div class="catalog-detail-copy"><div class="catalog-public-eyebrow" style="color:#145bb4">${catalogEscape(product.categoria)}${product.subcategoria?' · '+catalogEscape(product.subcategoria):''}</div><h1>${catalogEscape(product.nombre)}</h1><p>Consultá las alternativas comerciales vigentes para este producto.</p><div class="catalog-detail-price"><span class="muted">Precio contado</span><strong>${catalogMoney(product.opciones?.contado?.total??product.precio_contado)}</strong></div><div class="catalog-plan-list">${plans.map(plan=>`<div class="catalog-plan-row"><div><b>${catalogEscape(plan.titulo)}</b><span>Total ${catalogMoney(plan.total)}</span></div><strong>${catalogPlanLine(plan)}</strong></div>`).join('')}</div><button class="catalog-primary full" type="button" onclick="catalogBeginPurchase()">QUIERO COMPRAR</button><p class="catalog-legal">La solicitud será evaluada por Administración. No confirma una compra ni una aprobación de crédito.</p></div></div>`;
+  catalogEl('catalogProductDetail').innerHTML=`<div class="catalog-detail-grid"><div class="catalog-detail-media">${catalogProductImage(product,true)}</div><div class="catalog-detail-copy"><div class="catalog-public-eyebrow" style="color:#145bb4">${catalogEscape(product.categoria)}${product.subcategoria?' · '+catalogEscape(product.subcategoria):''}</div><h1>${catalogEscape(product.nombre)}</h1><p>${catalogEscape(product.descripcion_publica||product.subcategoria||'Consultá las alternativas comerciales vigentes para este producto.')}</p><div class="catalog-detail-price"><span class="muted">Precio contado</span><strong>${catalogMoney(product.opciones?.contado?.total??product.precio_contado)}</strong></div><div class="catalog-plan-list">${plans.map(plan=>`<div class="catalog-plan-row"><div><b>${catalogEscape(plan.titulo)}</b><span>Total ${catalogMoney(plan.total)}</span></div><strong>${catalogPlanLine(plan)}</strong></div>`).join('')}</div><button class="catalog-primary full" type="button" onclick="catalogBeginPurchase()">QUIERO COMPRAR</button><p class="catalog-legal">La solicitud será evaluada por Administración. No confirma una compra ni una aprobación de crédito.</p></div></div>`;
   catalogSetPublicSection('catalogProductView');
 }
 
@@ -206,15 +223,24 @@ function catalogRenderReview(){
 
 async function catalogSubmitRequest(){
   const button=catalogEl('catalogSubmitRequest'),status=catalogEl('catalogSubmitStatus');if(!catalogPublicState.product||!catalogPublicState.modality||!catalogPublicState.customer||!button)return;
+  if(button.disabled)return;
   button.disabled=true;button.textContent='ENVIANDO...';status?.classList.add('hide');
   catalogPublicState.idempotency=catalogPublicState.idempotency||(globalThis.crypto?.randomUUID?.()||'00000000-0000-4000-8000-'+String(Date.now()).padStart(12,'0').slice(-12));
   let result,error;
   if(catalogPublicState.demo){result={ok:true,codigo:'SC-DEMO-'+catalogPublicState.idempotency.slice(0,8).toUpperCase()}}
-  else{
-    const response=await sb.rpc('crear_solicitud_compra_publica',{p_token:catalogPublicState.token,p_producto_id:catalogPublicState.product.id,p_modalidad:catalogPublicState.modality,p_cliente:catalogPublicState.customer,p_clave_idempotencia:catalogPublicState.idempotency,p_sitio_web:catalogEl('catalogWebsite')?.value||null});
+  else{try{
+    const response=await sb.rpc('crear_solicitud_compra_publica',{p_token:catalogPublicState.token,p_producto_id:catalogPublicState.product.id,p_modalidad:catalogPublicState.modality,p_cliente:catalogPublicState.customer,p_clave_idempotencia:catalogPublicState.idempotency,p_version_cotizacion:catalogPublicState.product.version_cotizacion,p_sitio_web:catalogEl('catalogWebsite')?.value||null});
     result=response.data;error=response.error;
-  }
+  }catch(cause){error=cause}}
   button.disabled=false;button.textContent='ENVIAR SOLICITUD';
+  if(result?.condiciones_actualizadas&&result.producto_actualizado){
+    catalogPublicState.product=result.producto_actualizado;
+    catalogPublicState.products=catalogPublicState.products.map(item=>item.id===result.producto_actualizado.id?result.producto_actualizado:item);
+    catalogPublicState.idempotency='';catalogRenderProducts();catalogRenderCheckoutProduct();catalogRenderPlanChoices();
+    if(!result.producto_actualizado.opciones?.[catalogPublicState.modality]){catalogPublicState.modality='';catalogGoToStep(1)}else catalogRenderReview();
+    if(status){status.textContent=result.mensaje;status.classList.remove('hide')}
+    return;
+  }
   if(error||!result?.ok){if(status){status.textContent=error?.message||'No pudimos enviar la solicitud. Revisá los datos e intentá nuevamente.';status.classList.remove('hide')}return}
   catalogShowSuccess(result);
 }
@@ -294,20 +320,21 @@ function catalogConditionsHtml(snapshot,title){
 function renderAdminCatalogRequestDetail(request,history,notes){
   const detail=catalogEl('catalogRequestDetail');if(!detail)return;
   const closed=['rechazada','convertida_en_venta'].includes(request.estado_comercial),approved=request.estado_comercial==='aprobada';
-  const phone=encodeURIComponent(catalogDigits(request.cliente_telefono));
-  const actions=[];
+    const actions=[];
   if(!closed&&request.cliente_telefono)actions.push(`<button class="btn good" type="button" onclick="adminCatalogContact('${request.id}')">CONTACTAR POR WHATSAPP</button>`);
+  if(!closed&&request.cliente_telefono)actions.push(`<button class="btn btn2" type="button" onclick="adminCatalogContact('${request.id}',true)">SOLICITAR INFORMACIÓN</button>`);
+  if(approved)actions.push(`<button class="btn danger" type="button" onclick="adminCatalogSetState('${request.id}','rechazada')">RECHAZAR</button>`);
   if(request.estado_comercial==='nueva')actions.push(`<button class="btn btn2" type="button" onclick="adminCatalogSetState('${request.id}','en_revision')">MARCAR EN REVISIÓN</button>`);
   if(['nueva','en_revision'].includes(request.estado_comercial))actions.push(`<button class="btn btn2" type="button" onclick="adminCatalogSetState('${request.id}','contactado')">MARCAR CONTACTADO</button>`);
   if(['nueva','en_revision','contactado'].includes(request.estado_comercial))actions.push(`<button class="btn good" type="button" onclick="adminCatalogSetState('${request.id}','aprobada')">APROBAR</button><button class="btn danger" type="button" onclick="adminCatalogSetState('${request.id}','rechazada')">RECHAZAR</button>`);
-  const finalControls=approved?`<div class="catalog-admin-block"><h4>Condiciones finales autorizadas</h4><p class="muted">Se recalculan con las reglas vigentes y se guardan sin sobrescribir lo solicitado.</p><select id="adminCatalogFinalMode" class="input"><option value="contado">Contado</option><option value="credito_6">6 cuotas</option><option value="credito_9">9 cuotas</option></select><div class="catalog-admin-actions"><button class="btn btn2" type="button" onclick="adminCatalogSaveFinal('${request.id}')">GUARDAR CONDICIONES FINALES</button><button class="btn good" type="button" onclick="adminCatalogConvert('${request.id}')">CONVERTIR EN VENTA</button></div></div>`:'';
+  const finalControls=approved?`<div class="catalog-admin-block"><h4>Condiciones finales autorizadas</h4><p class="muted">Se recalculan con las reglas vigentes y se guardan sin sobrescribir lo solicitado.</p><select id="adminCatalogFinalMode" class="input"><option value="contado">Contado</option><option value="credito_6">6 cuotas</option><option value="credito_9">9 cuotas</option></select><label for="adminCatalogFirstDue">Primer vencimiento (si corresponde)</label><input id="adminCatalogFirstDue" class="input" type="date" min="${catalogLocalDate()}" value="${request.snapshot_final?.seleccion?.primer_vencimiento||catalogDefaultDueDate()}"><div class="catalog-admin-actions"><button class="btn btn2" type="button" onclick="adminCatalogSaveFinal('${request.id}')">GUARDAR CONDICIONES FINALES</button><button class="btn good" type="button" onclick="adminCatalogConvert('${request.id}')">CONVERTIR EN VENTA</button></div></div>`:'';
   detail.innerHTML=`<div class="catalog-request-card-head"><div><h3>${catalogEscape(request.codigo||'Solicitud')}</h3><div class="muted">${catalogEscape(catalogDateTime(request.creado_en))}</div></div><span class="catalog-status-pill ${catalogEscape(request.estado_comercial)}">${catalogEscape(catalogRequestStateLabel(request.estado_comercial))}</span></div><div class="catalog-admin-detail-grid"><div class="catalog-admin-block"><h4>Datos del cliente</h4><p><b>${catalogEscape(request.cliente_nombre)}</b></p><p>DNI ${catalogEscape(request.cliente_dni||'—')}</p><p>WhatsApp ${catalogEscape(request.cliente_telefono||'—')}</p><p>${catalogEscape(request.cliente_direccion||'—')} · ${catalogEscape(request.cliente_ciudad||'—')}</p>${request.notas?`<p><b>Observaciones:</b> ${catalogEscape(request.notas)}</p>`:''}</div><div class="catalog-admin-block"><h4>Origen comercial</h4><p><b>Vendedor:</b> ${catalogEscape(request.snapshot_solicitado?.vendedor_origen?.nombre||request.vendedores?.nombre||'REST directo')}</p><p><b>Canal:</b> ${catalogEscape(request.canal_origen==='catalogo_publico_directo'?'Catálogo general REST':'Catálogo personal')}</p><p><b>Producto:</b> ${catalogEscape(request.producto_nombre)}</p>${request.venta_id?`<p><b>Venta:</b> ${catalogEscape(request.venta_id)}</p>`:''}</div>${catalogConditionsHtml(request.snapshot_solicitado,'Condiciones que vio el cliente')}${catalogConditionsHtml(request.snapshot_final,'Condiciones finales de la venta')}</div><div class="catalog-admin-actions">${actions.join('')}</div>${finalControls}<div class="catalog-admin-block"><h4>Notas internas</h4><div class="catalog-note-compose"><textarea id="adminCatalogNote" class="input" maxlength="2000" placeholder="Agregar una nota visible solo para Administración"></textarea><button class="btn btn2" type="button" onclick="adminCatalogAddNote('${request.id}')">AGREGAR NOTA</button></div><div style="margin-top:8px">${notes.map(note=>`<div class="item">${catalogEscape(note.nota)}<br><span class="muted">${catalogEscape(catalogDateTime(note.creado_en))}</span></div>`).join('')||'<p class="muted">Sin notas internas.</p>'}</div></div><div class="catalog-admin-block"><h4>Historial</h4><div class="catalog-history">${history.map(entry=>`<div class="catalog-history-entry"><b>${catalogEscape(entry.tipo.replaceAll('_',' '))}</b>${entry.estado_nuevo?` · ${catalogEscape(catalogRequestStateLabel(entry.estado_nuevo))}`:''}<time>${catalogEscape(catalogDateTime(entry.creado_en))}</time></div>`).join('')||'<p class="muted">Sin movimientos.</p>'}</div></div>`;
   detail.classList.remove('hide');
-  if(request.snapshot_final?.seleccion?.codigo&&catalogEl('adminCatalogFinalMode'))catalogEl('adminCatalogFinalMode').value=request.snapshot_final.seleccion.codigo;
+  if(catalogEl('adminCatalogFinalMode'))catalogEl('adminCatalogFinalMode').value=request.snapshot_final?.seleccion?.codigo||catalogSnapshotMode(request);
   detail.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
-function adminCatalogContact(id){const request=adminCatalogRequests.find(item=>item.id===id);if(!request)return;const phone=catalogDigits(request.cliente_telefono),firstName=String(request.cliente_nombre||'').split(' ')[0];if(!phone)return alert('La solicitud no tiene un teléfono válido.');const message=`Hola ${firstName}, te contactamos de REST por tu solicitud del ${request.producto_nombre}.`;window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`,'_blank','noopener')}
+function adminCatalogContact(id,information=false){const request=adminCatalogRequests.find(item=>item.id===id);if(!request)return;const phone=catalogWhatsAppPhone(request.cliente_telefono),firstName=String(request.cliente_nombre||'').split(' ')[0];if(!phone)return alert('La solicitud no tiene un teléfono válido.');const message=`Hola ${firstName}, te contactamos de REST por tu solicitud del ${request.producto_nombre}.`+(information?' Necesitamos completar información para continuar con la evaluación.':'');window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`,'_blank','noopener')}
 
 async function adminCatalogSetState(id,state){
   const request=adminCatalogRequests.find(item=>item.id===id);if(!request)return;let note=null;
@@ -319,8 +346,8 @@ async function adminCatalogSetState(id,state){
 
 async function adminCatalogSaveFinal(id){
   const request=adminCatalogRequests.find(item=>item.id===id),mode=catalogEl('adminCatalogFinalMode')?.value;if(!request||!mode)return;
-  if(adminCatalogDemo){const original=request.snapshot_solicitado,selection=original.opciones[mode];request.snapshot_final={version:1,definido_en:new Date().toISOString(),producto:original.producto,opciones:original.opciones,seleccion:selection};request._history.push({id:Date.now(),tipo:'condiciones_finales',estado_nuevo:request.estado_comercial,creado_en:new Date().toISOString()});await openAdminCatalogRequest(id);return}
-  const {error}=await sb.rpc('guardar_condiciones_finales_solicitud',{p_solicitud_id:id,p_modalidad:mode});if(error)return alert(error.message);await loadAdminCatalogRequests();await openAdminCatalogRequest(id);
+  if(adminCatalogDemo){const original=request.snapshot_solicitado,selection={...original.opciones[mode],primer_vencimiento:mode==='contado'?null:catalogEl('adminCatalogFirstDue')?.value||catalogDefaultDueDate()};request.snapshot_final={version:1,definido_en:new Date().toISOString(),producto:original.producto,opciones:original.opciones,seleccion:selection};request._history.push({id:Date.now(),tipo:'condiciones_finales',estado_nuevo:request.estado_comercial,creado_en:new Date().toISOString()});await openAdminCatalogRequest(id);return}
+  const {error}=await sb.rpc('guardar_condiciones_finales_solicitud',{p_solicitud_id:id,p_modalidad:mode,p_primer_vencimiento:mode==='contado'?null:catalogEl('adminCatalogFirstDue')?.value||null});if(error)return alert(error.message);await loadAdminCatalogRequests();await openAdminCatalogRequest(id);
 }
 
 async function adminCatalogConvert(id){
@@ -340,9 +367,13 @@ function sellerCatalogRequestDemoRows(){return [{codigo:'SC-20261008-DEMO1',prod
 async function refreshSellerCatalogTools(){
   if(!seller?.id&&!sellerCatalogDemo)return;
   const token=seller?.catalogo_token;
-  if(catalogEl('sellerCatalogLink'))catalogEl('sellerCatalogLink').value=token?catalogPublicUrl(token):'';
+  if(catalogEl('sellerCatalogLink')){
+    const url=token?new URL(catalogPublicUrl(token,sellerCatalogDemo?location.href:REST_CATALOG_PUBLIC_ORIGIN)):null;
+    if(url&&sellerCatalogDemo)url.searchParams.set('demo','catalogo-publico');
+    catalogEl('sellerCatalogLink').value=url?url.toString():'';
+  }
   if(!token){if(catalogEl('sellerCatalogLinkStatus'))catalogEl('sellerCatalogLinkStatus').textContent='El enlace se habilitará al aplicar la migración de catálogo.';return}
-  if(catalogEl('sellerCatalogLinkStatus'))catalogEl('sellerCatalogLinkStatus').textContent='Listo para compartir. El token solo atribuye solicitudes; no permite ingresar al portal.';
+  if(catalogEl('sellerCatalogLinkStatus'))catalogEl('sellerCatalogLinkStatus').textContent='Compartí este enlace para que las solicitudes lleguen asociadas a vos.';
   let rows=[];
   if(sellerCatalogDemo)rows=sellerCatalogRequestDemoRows();
   else{
@@ -356,15 +387,29 @@ async function refreshSellerCatalogTools(){
 
 async function catalogCopyText(text){if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);return}const area=document.createElement('textarea');area.value=text;area.setAttribute('readonly','');area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();document.execCommand('copy');area.remove()}
 async function copySellerCatalogLink(){const link=catalogEl('sellerCatalogLink')?.value;if(!link)return alert('Tu enlace todavía no está disponible.');try{await catalogCopyText(link);if(catalogEl('sellerCatalogLinkStatus'))catalogEl('sellerCatalogLinkStatus').textContent='✓ Link copiado. Ya podés pegarlo donde quieras.'}catch(_error){alert('No pude copiar el enlace. Mantenelo presionado para copiarlo.') }}
+async function shareSellerCatalog(){const link=catalogEl('sellerCatalogLink')?.value;if(!link)return alert('Tu enlace todavía no está disponible.');if(navigator.share){try{await navigator.share({title:'Catálogo REST',text:'Elegí tu producto y enviá tu solicitud a REST.',url:link})}catch(error){if(error.name!=='AbortError')await copySellerCatalogLink()}}else window.open(link,'_blank','noopener')}
 function shareSellerCatalogWhatsApp(){const link=catalogEl('sellerCatalogLink')?.value;if(!link)return alert('Tu enlace todavía no está disponible.');const text=`Mirá el catálogo REST y enviame tu solicitud desde acá: ${link}`;window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,'_blank','noopener')}
 
 function bootCatalogAdminDemo(){
   initCatalogPurchaseUi();adminCatalogDemo=true;adminCatalogRequests=[];profile={id:'demo-admin',nombre:'Administración REST',rol:'admin'};
   ['loginScreen','clientRoot','referralRoot','recruitmentRoot','catalogPublicRoot'].forEach(id=>catalogEl(id)?.classList.add('hide'));catalogEl('appScreen')?.classList.remove('hide');catalogEl('adminRoot')?.classList.remove('hide');catalogEl('sellerRoot')?.classList.add('hide');document.body.classList.remove('seller-mode','catalog-public-mode');
   if(catalogEl('helloTxt'))catalogEl('helloTxt').textContent='Vista previa · Administración';if(catalogEl('roleTxt'))catalogEl('roleTxt').textContent='Solicitudes de compra';document.querySelectorAll('#adminRoot .panel').forEach(panel=>panel.classList.toggle('hide',panel.id!=='solicitudesCompraAdmin'));loadAdminCatalogRequests();
+  document.querySelectorAll('#adminRoot [data-tab]').forEach(button=>{button.disabled=button.dataset.tab!=='solicitudesCompraAdmin'});
+  catalogEl('logoutBtn')?.classList.add('hide');
 }
 
 function bootSellerCatalogDemo(){
   initCatalogPurchaseUi();sellerCatalogDemo=true;profile={id:'demo-seller',nombre:'Sofía',rol:'vendedor'};seller={id:'demo-seller-record',nombre:'Sofía Gómez',activo:true,catalogo_token:'8d7e0f6a-506a-4c0b-b9fd-13aa93d60723',categoria_actual:'pro'};
   ['loginScreen','clientRoot','referralRoot','recruitmentRoot','catalogPublicRoot'].forEach(id=>catalogEl(id)?.classList.add('hide'));catalogEl('appScreen')?.classList.remove('hide');catalogEl('adminRoot')?.classList.add('hide');catalogEl('sellerRoot')?.classList.remove('hide');document.body.classList.remove('catalog-public-mode');document.body.classList.add('seller-mode');document.querySelectorAll('.spanel').forEach(panel=>panel.classList.toggle('hide',panel.id!=='sellerHome'));if(catalogEl('sellerGreeting'))catalogEl('sellerGreeting').textContent='Hola, Sofía 👋';refreshSellerCatalogTools();
+  document.querySelectorAll('#sellerRoot [data-stab]').forEach(button=>{button.disabled=button.dataset.stab!=='sellerHome'});
+  document.querySelectorAll('#sellerHome > *').forEach(element=>{if(!element.classList.contains('seller-hero')&&!element.classList.contains('seller-kpis')&&element.id!=='sellerCatalogShareCard')element.classList.add('hide')});
+  document.querySelectorAll('.seller-top-actions').forEach(element=>element.classList.add('hide'));
+  if(catalogEl('goalDetail'))catalogEl('goalDetail').textContent='Vista previa del Portal del Vendedor';
+}
+
+async function toggleCatalogPublicProduct(id){
+  if(profile?.rol!=='admin')return;
+  const product=adminProductCache.find(item=>item.id===id);if(!product)return;
+  const {error}=await sb.from('productos').update({catalogo_publico:product.catalogo_publico===false}).eq('id',id);
+  if(error)return alert(error.message);await loadAdminProducts();
 }

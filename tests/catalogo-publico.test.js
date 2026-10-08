@@ -13,7 +13,7 @@ const migration=fs.readFileSync(path.join(root,'supabase/migrations/202610081455
 function helpers(){
   const sandbox={console,Intl,Date,URL,URLSearchParams};
   vm.createContext(sandbox);
-  vm.runInContext(`${script}\n;globalThis.__helpers={catalogPublicUrl,catalogDemoOptions,catalogNormalizeClient,catalogValidateClient,catalogModalityLabel,catalogRequestStateLabel};`,sandbox);
+  vm.runInContext(`${script}\n;globalThis.__helpers={catalogPublicUrl,catalogDemoOptions,catalogNormalizeClient,catalogValidateClient,catalogModalityLabel,catalogRequestStateLabel,catalogWhatsAppPhone};`,sandbox);
   return sandbox.__helpers;
 }
 
@@ -46,7 +46,7 @@ test('el backend resuelve el vendedor por token y exige vendedor y perfil activo
 test('el catálogo abre antes del login y sus RPC públicos tienen permisos mínimos',()=>{
   assert.match(html,/else if\(catalogToken\)bootCatalogPublic\(catalogToken\);else if\(sellerApplicationRoute\)/);
   assert.match(migration,/grant execute on function public\.obtener_catalogo_publico\(text\) to anon, authenticated/);
-  assert.match(migration,/grant execute on function public\.crear_solicitud_compra_publica\(text,uuid,text,jsonb,uuid,text\) to anon, authenticated/);
+  assert.match(migration,/grant execute on function public\.crear_solicitud_compra_publica\(text,uuid,text,jsonb,uuid,text,text\) to anon, authenticated/);
   assert.match(migration,/revoke all on table public\.solicitudes_venta from anon/);
   assert.doesNotMatch(migration,/grant\s+select\s+on\s+table\s+public\.solicitudes_venta\s+to\s+anon/i);
 });
@@ -55,7 +55,7 @@ test('el catálogo expone solo productos activos de Hogar y Celulares',()=>{
   const getCatalog=functionSql('obtener_catalogo_publico','crear_solicitud_compra_publica');
   assert.match(getCatalog,/p\.activo = true/);
   assert.match(getCatalog,/p\.categoria in \('hogar','celulares'\)/);
-  assert.match(getCatalog,/private\.opciones_catalogo_producto\(p\.id\)/);
+  assert.match(getCatalog,/private\.proyectar_producto_catalogo\(p\.id\)/);
   assert.doesNotMatch(getCatalog,/productos_costos|margen|comision/);
 });
 
@@ -199,7 +199,8 @@ test('la pantalla final no comunica compra, venta o crédito confirmados',()=>{
 test('la arquitectura admite REST directo sin asignar vendedores artificialmente',()=>{
   assert.match(migration,/alter column vendedor_id drop not null/);
   assert.match(migration,/'catalogo_publico_directo'/);
-  assert.match(migration,/Asigná un vendedor antes de convertir una solicitud directa/);
+  assert.match(migration,/alter table public\.ventas alter column vendedor_id drop not null/);
+  assert.doesNotMatch(functionSql('convertir_solicitud_compra'),/Asigná un vendedor/);
 });
 
 test('las rutas demo cubren catálogo, ficha, formulario, confirmación, vendedor y Administración',()=>{
@@ -213,4 +214,27 @@ test('el desarrollo nuevo permanece aislado de APP INTEGRAL REST Motos',()=>{
   const publicSql=functionSql('obtener_catalogo_publico','crear_solicitud_compra_publica')+functionSql('crear_solicitud_compra_publica','actualizar_estado_solicitud_compra');
   assert.doesNotMatch(publicSql,/categoria\s*=\s*'motos'|rest_motos|alquiler|contrato/i);
   assert.match(publicSql,/categoria in \('hogar','celulares'\)/g);
+});
+
+test('WhatsApp acepta números argentinos locales o internacionales',()=>{
+  const {catalogWhatsAppPhone}=helpers();
+  assert.equal(catalogWhatsAppPhone('385 3020483'),'5493853020483');
+  assert.equal(catalogWhatsAppPhone('+54 9 385 3020483'),'5493853020483');
+  assert.equal(catalogWhatsAppPhone('0385 15 3020483'),'5493853020483');
+});
+
+test('las 9 cuotas siguen visibles en cards de pantallas pequeñas',()=>{
+  assert.doesNotMatch(styles,/catalog-installment:nth-child\(2\)\{display:none/);
+});
+
+test('la versión comercial evita enviar importes que el cliente no vio',()=>{
+  assert.match(migration,/p_version_cotizacion is distinct from v_publico->>'version_cotizacion'/);
+  assert.match(script,/p_version_cotizacion:catalogPublicState.product.version_cotizacion/);
+  assert.match(script,/condiciones_actualizadas/);
+});
+
+test('Administración controla descripción y visibilidad en productos existentes',()=>{
+  assert.match(migration,/add column if not exists descripcion_publica/);
+  assert.match(html,/Descripción pública/);
+  assert.match(script,/catalogo_publico:product.catalogo_publico===false/);
 });

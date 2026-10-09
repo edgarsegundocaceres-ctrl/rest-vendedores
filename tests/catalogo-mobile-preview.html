@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>REST · Revisión móvil del catálogo</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#edf1f7;color:#14213d;font:15px system-ui,sans-serif}header{padding:14px 22px;background:#fff;border-bottom:1px solid #d9e0ea;display:flex;flex-wrap:wrap;align-items:center;gap:12px}h1{margin:0;font-size:18px}label{display:flex;gap:7px;align-items:center}select{padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit}p{margin:0;color:#64748b;font-size:13px}.stage{padding:22px;display:flex;justify-content:center}iframe{display:block;width:390px;height:844px;border:0;background:white;border-radius:15px;box-shadow:0 8px 32px #14213d25}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>REST · Revisión móvil</h1>
+    <label>Pantalla <select id="screen"><option value="320">320 px</option><option value="360">360 px</option><option value="390" selected>390 px</option><option value="412">412 px</option></select></label>
+    <label>Vista <select id="surface"><option value="catalogo-publico">Catálogo</option><option value="catalogo-producto">Producto</option><option value="catalogo-formulario">Solicitud</option><option value="catalogo-confirmacion">Confirmación</option><option value="mi-catalogo">Mi catálogo</option><option value="solicitudes-admin">Administración</option></select></label>
+    <p>Datos demostrativos · no crea operaciones reales</p>
+  </header>
+  <main class="stage"><iframe id="mobile" title="Catálogo REST en pantalla móvil" src="/?demo=catalogo-publico"></iframe></main>
+  <script>
+    const screen=document.getElementById('screen'),surface=document.getElementById('surface'),mobile=document.getElementById('mobile');
+    screen.addEventListener('change',()=>{mobile.style.width=screen.value+'px'});
+    surface.addEventListener('change',()=>{mobile.src='/?demo='+encodeURIComponent(surface.value)});
+  </script>
+</body>
+</html>

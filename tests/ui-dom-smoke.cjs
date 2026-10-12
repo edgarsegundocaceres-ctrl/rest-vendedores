@@ -14,7 +14,8 @@ function preparedHtml(){
   return sourceHtml
     .replace('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>',`<script>window.supabase={createClient:()=>({})};window.scrollTo=()=>{};window.alert=()=>{};window.confirm=()=>true;window.prompt=()=>'';window.open=()=>{};</script>`)
     .replace('<script src="/captacion-vendedores.js"></script>',`<script>${recruitmentScript}</script>`)
-    .replace('<script src="/catalogo-publico.js"></script>',`<script>${catalogScript}</script>`);
+    .replace('<script src="/catalogo-publico.js"></script>',`<script>${catalogScript}</script>`)
+    .replace('<script src="/cobranzas.js"></script>',`<script>${fs.readFileSync(path.join(root,'cobranzas.js'),'utf8')}</script>`);
 }
 
 async function render(route){

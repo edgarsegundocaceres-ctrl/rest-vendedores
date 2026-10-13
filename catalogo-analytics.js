@@ -10,13 +10,14 @@
   const now=Date.now(),key='rest.catalog.session.'+context.token;
   let data;try{data=JSON.parse(storage.get(key))}catch{}
   if(!data||now-data.last>=TTL||now-data.created>=MAX){data={id:uuid(),created:now,last:now};sent=new Set()}
-  data.last=now;storage.set(key,JSON.stringify(data));return data.id;
+  storage.set(key,JSON.stringify(data));return data.id;
  }
  function demoRows(){try{return JSON.parse(storage.get('rest.catalog.demo.events')||'[]')}catch{return []}}
  function track(type,product=null,requestId=null){
   try{
    if(!context||(!product&&type!=='CATALOGO_VISITA'))return;
    const sid=session(),key=[sid,type,product,requestId].join(':');if(sent.has(key))return;sent.add(key);
+   const saved=JSON.parse(storage.get('rest.catalog.session.'+context.token));saved.last=Date.now();storage.set('rest.catalog.session.'+context.token,JSON.stringify(saved));
    const ctx={...context};
    queue=queue.catch(()=>{}).then(async()=>{
     if(ctx.demo){const rows=demoRows();if(!rows.some(r=>r.key===key)){rows.push({key,type,product,name:ctx.products?.find(p=>p.id===product)?.nombre||product,sid,visitor:ctx.visitor,at:new Date().toISOString()});storage.set('rest.catalog.demo.events',JSON.stringify(rows.slice(-2000)))}return}

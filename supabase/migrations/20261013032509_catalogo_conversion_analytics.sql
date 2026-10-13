@@ -4,6 +4,7 @@ create table private.catalogo_analitica_sesiones (
  creado_en timestamptz not null default now(), ultimo_evento timestamptz not null default now()
 );
 create index catalogo_analitica_sesiones_fecha on private.catalogo_analitica_sesiones(creado_en,vendedor_id);
+create index catalogo_analitica_sesiones_vendedor on private.catalogo_analitica_sesiones(vendedor_id,creado_en);
 create index catalogo_analitica_sesiones_visitante on private.catalogo_analitica_sesiones(visitante,creado_en);
 create table private.catalogo_analitica_eventos (
  id bigint generated always as identity primary key,
@@ -36,7 +37,11 @@ begin
   if exists(select 1 from private.catalogo_analitica_sesiones where visitante=p_visitante and vendedor_id=v_vendedor and ultimo_evento>now()-interval '30 minutes') then return false; end if;
   insert into private.catalogo_analitica_sesiones(id,visitante,vendedor_id) values(p_sesion,p_visitante,v_vendedor);
  end if;
- if p_tipo='CATALOGO_VISITA' then return p_producto is null; end if;
+ if p_tipo='CATALOGO_VISITA' then
+  if p_producto is not null then return false; end if;
+  update private.catalogo_analitica_sesiones set ultimo_evento=now() where id=p_sesion;
+  return true;
+ end if;
  select coalesce(nullif(p.subcategoria,''),p.categoria) into v_categoria from public.productos p
  where p.id=p_producto and p.activo and p.catalogo_publico and p.precio_contado>0 and p.categoria in ('hogar','celulares');
  if not found then return false; end if;

@@ -40,5 +40,11 @@ try{
  await db.exec("update private.catalogo_analitica_sesiones set ultimo_evento=now()-interval '31 minutes'");
  assert.equal(await rpc(db,'registrar_evento_catalogo',{...args,p_tipo:'PRODUCTO_VISTA',p_producto:product}),false);count++;
  assert.equal(await rpc(db,'registrar_evento_catalogo',{...args,p_sesion:'20000000-0000-4000-8000-000000000002'}),true);count++;
+ const unavailable=await rpc(db,'registrar_evento_catalogo',{...args,p_sesion:'20000000-0000-4000-8000-000000000002',p_tipo:'PRODUCTO_VISTA',p_producto:'ffffffff-ffff-4fff-8fff-ffffffffffff'});assert.equal(unavailable,false);
+ let accepted=0;for(let i=0;i<121;i++){const n=String(i+10).padStart(12,'0');if(await rpc(db,'registrar_evento_catalogo',{...args,p_visitante:'30000000-0000-4000-8000-'+n,p_sesion:'40000000-0000-4000-8000-'+n}))accepted++}
+ ok('rate limit por vendedor rechaza exceso aunque roten UUID',()=>assert.equal(accepted,118));
+ await db.exec('set role authenticated');
+ await assert.rejects(db.query('delete from private.catalogo_analitica_eventos'),/permission denied/);
+ await assert.rejects(db.query('update private.catalogo_analitica_sesiones set visitante=id'),/permission denied/);count++;
  console.log(`PASS ${count} grupos de verificaciones SQL`);
 }finally{await db.close()}})().catch(e=>{console.error(e);process.exitCode=1});

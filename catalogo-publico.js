@@ -207,7 +207,7 @@ function catalogGoToStep(step){
   catalogEl('catalogCustomerForm')?.classList.toggle('hide',step!==2);
   catalogEl('catalogReviewStep')?.classList.toggle('hide',step!==3);
   [1,2,3].forEach(number=>catalogEl(`catalogStepBar${number}`)?.classList.toggle('active',number<=step));
-  const titles={1:['Elegí cómo pagar','Seleccioná una de las opciones disponibles.'],2:['Completá tus datos','Solo pedimos lo necesario para poder contactarte.'],3:['Revisá tu solicitud','Confirmá producto, modalidad y datos antes de enviar.']};
+  const titles={1:['Elegí cómo pagar','Seleccioná una de las opciones disponibles.'],2:['Completá tus datos','Completá la información para que REST pueda evaluar tu solicitud.'],3:['Revisá tu solicitud','Confirmá producto, modalidad y datos antes de enviar.']};
   if(catalogEl('catalogCheckoutTitle'))catalogEl('catalogCheckoutTitle').textContent=titles[step][0];
   if(catalogEl('catalogCheckoutLead'))catalogEl('catalogCheckoutLead').textContent=titles[step][1];
   if(step===3)catalogRenderReview();

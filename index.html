@@ -89,10 +89,10 @@ body.client-mode .wrap{max-width:620px;padding:0 14px 90px}
       <div class="catalog-public-hero">
         <div class="catalog-public-eyebrow">Catálogo REST</div>
         <h1>Encontrá lo que necesitás para tu hogar</h1>
-        <p>Elegí un producto, compará contado o financiación y enviá tu solicitud. El equipo de REST se comunicará con vos para continuar.</p>
+        <p>Opciones reales para tu hogar. Consultá sin compromiso; REST te acompaña para elegir.</p>
         <span id="catalogPreviewFlag" class="catalog-preview-flag hide">Vista previa · no envía datos reales</span>
       </div>
-      <div class="catalog-public-search"><input id="catalogPublicSearch" type="search" placeholder="Buscar producto..." autocomplete="off" aria-label="Buscar productos"></div>
+      <details class="catalog-how" open><summary>¿Cómo funciona?</summary><ol><li>Elegí un producto.</li><li>Tocá <b>Me interesa</b> y elegí cómo pagar.</li><li>Completá tus datos.</li><li>REST te contacta para confirmar disponibilidad y condiciones.</li></ol></details><div class="catalog-public-search"><input id="catalogPublicSearch" type="search" placeholder="Buscar producto..." autocomplete="off" aria-label="Buscar productos"></div>
       <div id="catalogPublicChips" class="catalog-public-chips" aria-label="Categorías">
         <button type="button" class="active" data-public-category="">Todos</button>
         <button type="button" data-public-category="hogar">Hogar</button>
@@ -120,7 +120,7 @@ body.client-mode .wrap{max-width:620px;padding:0 14px 90px}
         </section>
 
         <form id="catalogCustomerForm" class="hide" novalidate>
-          <div class="catalog-form-grid">
+          <p class="catalog-legal">Tus datos se usan para gestionar la solicitud y contactarte. DNI y domicilio permiten a Administración continuar con el registro existente; enviar este formulario no confirma una compra.</p><div class="catalog-form-grid">
             <div class="catalog-field"><label for="catalogFirstName">Nombre</label><input id="catalogFirstName" maxlength="80" autocomplete="given-name"><div id="catalogFirstNameError" class="catalog-field-error"></div></div>
             <div class="catalog-field"><label for="catalogLastName">Apellido</label><input id="catalogLastName" maxlength="80" autocomplete="family-name"><div id="catalogLastNameError" class="catalog-field-error"></div></div>
             <div class="catalog-field"><label for="catalogDni">DNI</label><input id="catalogDni" maxlength="12" inputmode="numeric" autocomplete="off"><div id="catalogDniError" class="catalog-field-error"></div></div>
@@ -135,7 +135,7 @@ body.client-mode .wrap{max-width:620px;padding:0 14px 90px}
 
         <section id="catalogReviewStep" class="hide">
           <div id="catalogReviewSummary" class="catalog-review"></div>
-          <p class="catalog-legal">Enviar esta solicitud no confirma una compra ni implica aprobación de crédito. Administración de REST revisará la información y se comunicará con vos.</p>
+          <p class="catalog-legal">Enviar una solicitud NO confirma una compra. No genera deuda ni obligación de pago. Solo nos permite saber qué producto y opción te interesan para contactarte. La financiación está sujeta a evaluación.</p>
           <div class="catalog-actions"><button class="catalog-secondary" type="button" onclick="catalogGoToStep(2)">EDITAR DATOS</button><button id="catalogSubmitRequest" class="catalog-primary" type="button">ENVIAR SOLICITUD</button></div>
         </section>
         <div id="catalogSubmitStatus" class="catalog-status error hide" role="status" aria-live="polite"></div>
@@ -143,8 +143,8 @@ body.client-mode .wrap{max-width:620px;padding:0 14px 90px}
     </section>
 
     <section id="catalogSuccessView" class="catalog-state-card hide">
-      <div class="catalog-state-mark">✓</div><h1>Solicitud recibida</h1>
-      <p>Recibimos tu solicitud. El equipo de REST se comunicará con vos para continuar.</p>
+      <div class="catalog-state-mark">✓</div><h1>¡Listo! Recibimos tu solicitud.</h1><span class="muted">Solicitud recibida · operación sin confirmar</span>
+      <p>REST se comunicará con vos por WhatsApp para continuar. La compra todavía NO está confirmada; no se generó deuda ni obligación de pago.</p>
       <div id="catalogSuccessSummary" class="catalog-review-section"></div>
       <p id="catalogSuccessCode" class="muted"></p>
       <button class="catalog-secondary" type="button" onclick="catalogStartAgain()">VOLVER AL CATÁLOGO</button>
@@ -326,8 +326,8 @@ body.client-mode .wrap{max-width:620px;padding:0 14px 90px}
 <section id="appScreen" class="hide">
 <div class="card"><div class="row app-head-row"><div><h2 id="helloTxt">Panel</h2><div id="roleTxt" class="muted"></div></div><div class="app-head-actions"><button class="btn install-btn hide" id="installAppBtn" type="button">📲 Instalar REST</button><button class="btn btn2" id="logoutBtn">Salir</button></div></div></div>
 <div id="adminRoot" class="hide">
-<div class="nav"><button class="btn" data-tab="resumen">Resumen</button><button class="btn btn2" data-tab="solicitudesCompraAdmin">Solicitudes de compra <span id="catalogAdminNewBadge" class="badge catalog-admin-badge hide">0</span></button><button class="btn btn2" data-tab="vendedores">Vendedores</button><button class="btn btn2" data-tab="clientesAdmin">Clientes</button><button class="btn btn2" data-tab="interesesAdmin">Intereses</button><button class="btn btn2" data-tab="referidosAdmin">🎁 Referidos</button><button class="btn btn2" data-tab="catalogoAdmin">Administrar catálogo</button><button class="btn btn2" data-tab="ventas">Ventas</button><button class="btn btn2" data-tab="cobranzasAdmin">Cobranzas</button><button class="btn btn2" data-tab="comisiones">Comisiones</button><button class="btn btn2" data-tab="objetivosAdmin">Objetivos y Premios</button><button class="btn btn2" data-tab="logisticaAdmin">Logística</button><button class="btn btn2" data-tab="comunicados">Comunicados</button></div>
-<section id="resumen" class="panel"><div class="card"><h3>Cupo mensual de financiación</h3><div class="big" id="adminQuotaText">Cargando...</div><div class="progress"><div id="adminQuotaBar"></div></div><div class="row"><input id="adminQuotaInput" class="input" type="number" placeholder="Cupo mensual disponible"><button class="btn" onclick="saveMonthlyQuota()">GUARDAR CUPO</button></div><p class="muted">Crédito personal, anticipo + cuotas y tarjetas consumen el 100% de la venta. Contado y entrega pactada no consumen cupo.</p></div><div class="grid"><div class="kpi">Ventas<div id="kVentas" class="big">0</div></div><div class="kpi">Facturación válida<div id="kFact" class="big">$0</div></div><div class="kpi">Pendientes<div id="kPend" class="big">0</div></div><div class="kpi">Comisiones pendientes<div id="kCom" class="big">$0</div></div></div><div id="adminLogAlert" class="card hide"><h3 style="margin-top:0">🚚 Logística en movimiento</h3><div id="adminLogAlertText"></div></div><div class="card"><h3>Ventas recientes</h3><div id="recent"></div></div></section>
+<div class="nav"><button class="btn" data-tab="resumen">Resumen</button><button class="btn btn2" data-tab="solicitudesCompraAdmin">Solicitudes de compra <span id="catalogAdminNewBadge" class="badge catalog-admin-badge hide">0</span></button><button class="btn btn2" data-tab="vendedores">Vendedores</button><button class="btn btn2" data-tab="clientesAdmin">Clientes</button><button class="btn btn2" data-tab="interesesAdmin">Intereses</button><button class="btn btn2" data-tab="referidosAdmin">🎁 Referidos</button><button class="btn btn2" data-tab="analiticaCatalogoAdmin">Analítica del catálogo</button><button class="btn btn2" data-tab="catalogoAdmin">Administrar catálogo</button><button class="btn btn2" data-tab="ventas">Ventas</button><button class="btn btn2" data-tab="cobranzasAdmin">Cobranzas</button><button class="btn btn2" data-tab="comisiones">Comisiones</button><button class="btn btn2" data-tab="objetivosAdmin">Objetivos y Premios</button><button class="btn btn2" data-tab="logisticaAdmin">Logística</button><button class="btn btn2" data-tab="comunicados">Comunicados</button></div>
+<section id="analiticaCatalogoAdmin" class="panel hide"><div class="card"><h2>Analítica del catálogo</h2><div id="catalogAnalyticsPanel"></div></div></section><section id="resumen" class="panel"><div class="card"><h3>Cupo mensual de financiación</h3><div class="big" id="adminQuotaText">Cargando...</div><div class="progress"><div id="adminQuotaBar"></div></div><div class="row"><input id="adminQuotaInput" class="input" type="number" placeholder="Cupo mensual disponible"><button class="btn" onclick="saveMonthlyQuota()">GUARDAR CUPO</button></div><p class="muted">Crédito personal, anticipo + cuotas y tarjetas consumen el 100% de la venta. Contado y entrega pactada no consumen cupo.</p></div><div class="grid"><div class="kpi">Ventas<div id="kVentas" class="big">0</div></div><div class="kpi">Facturación válida<div id="kFact" class="big">$0</div></div><div class="kpi">Pendientes<div id="kPend" class="big">0</div></div><div class="kpi">Comisiones pendientes<div id="kCom" class="big">$0</div></div></div><div id="adminLogAlert" class="card hide"><h3 style="margin-top:0">🚚 Logística en movimiento</h3><div id="adminLogAlertText"></div></div><div class="card"><h3>Ventas recientes</h3><div id="recent"></div></div></section>
 <section id="vendedores" class="panel hide">
   <div class="card seller-admin-card">
     <div class="seller-admin-header">
@@ -482,6 +482,7 @@ body.client-mode .wrap{max-width:620px;padding:0 14px 90px}
 </section>
 </main>
 <script src="/captacion-vendedores.js"></script>
+<script src="/catalogo-analytics.js"></script>
 <script src="/catalogo-publico.js"></script>
 <script src="/cobranzas.js"></script>
 <script>
@@ -494,7 +495,7 @@ function commissionPct(){return seller?.categoria_actual==='junior'?3:5}
 function estimatedCommission(total){return Math.round((Number(total)||0)*commissionPct()/100)}
 const solCoef={2:1.0819,3:1.1232,4:1.1658,5:1.2098,6:1.2552,7:1.4161,8:1.4854,9:1.5577,10:1.6331,11:1.7935,12:1.7935,13:1.8789,14:1.9678,15:2.0605,16:2.1572,17:2.2579,18:2.3629,19:2.4724,20:2.5866,21:2.7057,22:2.8299,23:2.9595,24:3.0948};
 loginBtn.onclick=login; logoutBtn.onclick=async()=>{await sb.auth.signOut();location.reload()}; createSellerBtn.onclick=createSeller; noticeBtn.onclick=postNotice; saleBtn.onclick=newSale; addProductBtn.onclick=addProduct;
-document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{if(adminCatalogDemo&&b.dataset.tab!=='solicitudesCompraAdmin')return;document.querySelectorAll('#adminRoot .panel').forEach(p=>p.classList.add('hide'));$(b.dataset.tab).classList.remove('hide');if(b.dataset.tab==='solicitudesCompraAdmin')loadAdminCatalogRequests();if(b.dataset.tab==='catalogoAdmin')loadAdminProducts();if(b.dataset.tab==='cobranzasAdmin')RESTCobranza.load();if(b.dataset.tab==='objetivosAdmin')loadGoalsAdmin();if(b.dataset.tab==='logisticaAdmin')loadLogAdmin();if(b.dataset.tab==='clientesAdmin')loadPortalClients();if(b.dataset.tab==='interesesAdmin')loadAdminIntereses();if(b.dataset.tab==='referidosAdmin')loadAdminReferidos();if(b.dataset.tab==='vendedores'){showSellerAdminView('active');loadAdminRecruitment()}});
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{if(adminCatalogDemo&&b.dataset.tab!=='solicitudesCompraAdmin')return;document.querySelectorAll('#adminRoot .panel').forEach(p=>p.classList.add('hide'));$(b.dataset.tab).classList.remove('hide');if(b.dataset.tab==='solicitudesCompraAdmin')loadAdminCatalogRequests();if(b.dataset.tab==='analiticaCatalogoAdmin')RESTCatalogAnalytics.admin();if(b.dataset.tab==='catalogoAdmin')loadAdminProducts();if(b.dataset.tab==='cobranzasAdmin')RESTCobranza.load();if(b.dataset.tab==='objetivosAdmin')loadGoalsAdmin();if(b.dataset.tab==='logisticaAdmin')loadLogAdmin();if(b.dataset.tab==='clientesAdmin')loadPortalClients();if(b.dataset.tab==='interesesAdmin')loadAdminIntereses();if(b.dataset.tab==='referidosAdmin')loadAdminReferidos();if(b.dataset.tab==='vendedores'){showSellerAdminView('active');loadAdminRecruitment()}});
 document.querySelectorAll('[data-stab]').forEach(b=>b.onclick=()=>showSellerTab(b.dataset.stab));
 function showSellerTab(id){if(sellerCatalogDemo&&id!=='sellerHome')return;document.querySelectorAll('.spanel').forEach(p=>p.classList.add('hide'));$(id).classList.remove('hide');document.querySelectorAll('.seller-bottom-nav [data-stab]').forEach(b=>b.classList.toggle('active',b.dataset.stab===id));if(id==='sellerCatalog')loadCatalog();if(id==='sellerOpportunities')loadSellerIntereses();if(id==='sellerReferrals')loadSellerReferidos();if(id==='sellerHistory')loadSellerBudgets();window.scrollTo({top:0,behavior:'smooth'})}
 async function login(){loginMsg.textContent='Ingresando...';let {error}=await sb.auth.signInWithPassword({email:emailInput.value.trim(),password:passInput.value});if(error){loginMsg.textContent='Error: '+error.message;return}await boot()}

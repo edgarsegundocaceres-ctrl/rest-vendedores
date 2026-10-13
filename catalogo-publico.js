@@ -133,7 +133,9 @@ async function bootCatalogPublic(token,{demo=false,start='catalog'}={}){
   catalogPublicState.seller=payload.vendedor||null;
   catalogPublicState.products=Array.isArray(payload.productos)?payload.productos:[];
   if(catalogEl('catalogPublicSeller'))catalogEl('catalogPublicSeller').innerHTML=`Te acompaña <b>${catalogEscape(payload.vendedor?.nombre||'Equipo REST')}</b>`;
+  catalogRenderCategories();
   catalogRenderProducts();
+  globalThis.RESTCatalogAnalytics?.start(token,demo,catalogPublicState.products);
   catalogSetPublicSection('catalogPublicView');
 
   if(start==='product'&&catalogPublicState.products[0])catalogOpenProduct(catalogPublicState.products[0].id);
@@ -148,27 +150,33 @@ async function bootCatalogPublic(token,{demo=false,start='catalog'}={}){
 function catalogShowPublicError(message){if(catalogEl('catalogPublicErrorText'))catalogEl('catalogPublicErrorText').textContent=message;catalogSetPublicSection('catalogPublicError')}
 
 function catalogRenderProducts(){
-  const query=catalogPublicState.search.toLowerCase();
-  const products=catalogPublicState.products.filter(product=>(!catalogPublicState.category||product.categoria===catalogPublicState.category)&&(!query||`${product.nombre} ${product.subcategoria||''} ${product.categoria}`.toLowerCase().includes(query)));
+  const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const query=normalize(catalogPublicState.search);
+  const products=catalogPublicState.products.filter(product=>(!catalogPublicState.category||product.categoria===catalogPublicState.category||product.subcategoria===catalogPublicState.category)&&(!query||normalize(`${product.nombre} ${product.subcategoria||''} ${product.categoria}`).includes(query)));
   if(catalogEl('catalogPublicCount'))catalogEl('catalogPublicCount').textContent=`${products.length} producto${products.length===1?'':'s'} disponible${products.length===1?'':'s'}`;
   if(!catalogEl('catalogPublicProducts'))return;
-  catalogEl('catalogPublicProducts').innerHTML=products.map(product=>{
+  catalogEl('catalogPublicProducts').innerHTML=products.slice(0,catalogPublicState.limit||36).map(product=>{
     const six=product.opciones?.credito_6,nine=product.opciones?.credito_9;
     return `<article class="catalog-product-card">${catalogProductImage(product)}<div class="catalog-product-body"><div class="catalog-product-category">${catalogEscape(product.categoria)}</div><h2>${catalogEscape(product.nombre)}</h2><div class="catalog-product-description">${catalogEscape(product.descripcion_publica||product.subcategoria||'')}</div><div><div class="catalog-cash-label">Precio contado</div><div class="catalog-cash-price">${catalogMoney(product.opciones?.contado?.total??product.precio_contado)}</div></div><div class="catalog-installments">${six?`<div class="catalog-installment">6 cuotas<b>${catalogMoney(six.valor_cuota)}</b></div>`:''}${nine?`<div class="catalog-installment">9 cuotas<b>${catalogMoney(nine.valor_cuota)}</b></div>`:''}</div><button class="catalog-primary" type="button" onclick="catalogOpenProduct('${catalogEscape(product.id)}')">VER PRODUCTO</button></div></article>`;
   }).join('')||'<div class="catalog-state-card"><h2>Sin resultados</h2><p>Probá con otra búsqueda o categoría.</p></div>';
+  let more=catalogEl('catalogLoadMore');if(!more){more=document.createElement('button');more.id='catalogLoadMore';more.type='button';more.className='catalog-secondary';more.onclick=catalogLoadMore;catalogEl('catalogPublicProducts').after(more)}
+  more.textContent='VER MÁS PRODUCTOS';more.hidden=products.length<=(catalogPublicState.limit||36);
 }
+
+function catalogLoadMore(){catalogPublicState.limit=(catalogPublicState.limit||36)+36;catalogRenderProducts()}
 
 function catalogOpenProduct(id){
   const product=catalogPublicState.products.find(item=>item.id===id);if(!product)return;
+  globalThis.RESTCatalogAnalytics?.track('PRODUCTO_VISTA',product.id);
   catalogPublicState.product=product;catalogPublicState.modality='';catalogPublicState.customer=null;
   catalogPublicState.idempotency='';
   const plans=['credito_6','credito_9'].map(code=>product.opciones?.[code]).filter(Boolean);
-  catalogEl('catalogProductDetail').innerHTML=`<div class="catalog-detail-grid"><div class="catalog-detail-media">${catalogProductImage(product,true)}</div><div class="catalog-detail-copy"><div class="catalog-public-eyebrow" style="color:#145bb4">${catalogEscape(product.categoria)}${product.subcategoria?' · '+catalogEscape(product.subcategoria):''}</div><h1>${catalogEscape(product.nombre)}</h1><p>${catalogEscape(product.descripcion_publica||product.subcategoria||'Consultá las alternativas comerciales vigentes para este producto.')}</p><div class="catalog-detail-price"><span class="muted">Precio contado</span><strong>${catalogMoney(product.opciones?.contado?.total??product.precio_contado)}</strong></div><div class="catalog-plan-list">${plans.map(plan=>`<div class="catalog-plan-row"><div><b>${catalogEscape(plan.titulo)}</b><span>Total ${catalogMoney(plan.total)}</span></div><strong>${catalogPlanLine(plan)}</strong></div>`).join('')}</div><button class="catalog-primary full" type="button" onclick="catalogBeginPurchase()">QUIERO COMPRAR</button><p class="catalog-legal">La solicitud será evaluada por Administración. No confirma una compra ni una aprobación de crédito.</p></div></div>`;
+  catalogEl('catalogProductDetail').innerHTML=`<div class="catalog-detail-grid"><div class="catalog-detail-media">${catalogProductImage(product,true)}</div><div class="catalog-detail-copy"><div class="catalog-public-eyebrow" style="color:#145bb4">${catalogEscape(product.categoria)}${product.subcategoria?' · '+catalogEscape(product.subcategoria):''}</div><h1>${catalogEscape(product.nombre)}</h1><p>${catalogEscape(product.descripcion_publica||product.subcategoria||'Consultá las alternativas comerciales vigentes para este producto.')}</p><div class="catalog-detail-price"><span class="muted">Precio contado</span><strong>${catalogMoney(product.opciones?.contado?.total??product.precio_contado)}</strong></div><div class="catalog-plan-list">${plans.map(plan=>`<div class="catalog-plan-row"><div><b>${catalogEscape(plan.titulo)}</b><span>Total ${catalogMoney(plan.total)}</span></div><strong>${catalogPlanLine(plan)}</strong></div>`).join('')}</div><button class="catalog-primary full" type="button" onclick="catalogBeginPurchase()">ME INTERESA</button><p class="catalog-legal">La solicitud será evaluada por Administración. No confirma una compra ni una aprobación de crédito.</p></div></div>`;
   catalogSetPublicSection('catalogProductView');
 }
 
 function catalogBackToList(){catalogSetPublicSection('catalogPublicView')}
-function catalogBeginPurchase(){if(!catalogPublicState.product)return;catalogPublicState.modality='';catalogPublicState.step=1;catalogRenderCheckoutProduct();catalogRenderPlanChoices();catalogGoToStep(1);catalogSetPublicSection('catalogCheckoutView')}
+function catalogBeginPurchase(){if(!catalogPublicState.product)return;globalThis.RESTCatalogAnalytics?.track('INTERES_CLICK',catalogPublicState.product.id);catalogPublicState.modality='';catalogPublicState.step=1;catalogRenderCheckoutProduct();catalogRenderPlanChoices();catalogGoToStep(1);catalogSetPublicSection('catalogCheckoutView')}
 
 function catalogRenderCheckoutProduct(){
   const product=catalogPublicState.product;if(!product||!catalogEl('catalogCheckoutProduct'))return;
@@ -242,6 +250,7 @@ async function catalogSubmitRequest(){
     return;
   }
   if(error||!result?.ok){if(status){status.textContent=error?.message||'No pudimos enviar la solicitud. Revisá los datos e intentá nuevamente.';status.classList.remove('hide')}return}
+  if(catalogPublicState.demo)globalThis.RESTCatalogAnalytics?.demoRequest(catalogPublicState.idempotency,catalogPublicState.product.id);
   catalogShowSuccess(result);
 }
 
@@ -256,8 +265,9 @@ function catalogStartAgain(){catalogPublicState.product=null;catalogPublicState.
 
 function initCatalogPurchaseUi(){
   if(catalogPurchaseUiReady||typeof document==='undefined')return;catalogPurchaseUiReady=true;
-  catalogEl('catalogPublicSearch')?.addEventListener('input',event=>{catalogPublicState.search=event.target.value||'';catalogRenderProducts()});
-  catalogEl('catalogPublicChips')?.addEventListener('click',event=>{const button=event.target.closest('[data-public-category]');if(!button)return;catalogPublicState.category=button.dataset.publicCategory||'';catalogEl('catalogPublicChips').querySelectorAll('button').forEach(item=>item.classList.toggle('active',item===button));catalogRenderProducts()});
+  catalogEl('catalogCustomerForm')?.addEventListener('input',()=>globalThis.RESTCatalogAnalytics?.track('SOLICITUD_INICIADA',catalogPublicState.product?.id));
+  catalogEl('catalogPublicSearch')?.addEventListener('input',event=>{catalogPublicState.search=event.target.value||'';catalogPublicState.limit=36;catalogRenderProducts()});
+  catalogEl('catalogPublicChips')?.addEventListener('click',event=>{const button=event.target.closest('[data-public-category]');if(!button)return;catalogPublicState.category=button.dataset.publicCategory||'';catalogPublicState.limit=36;catalogEl('catalogPublicChips').querySelectorAll('button').forEach(item=>item.classList.toggle('active',item===button));catalogRenderProducts()});
   catalogEl('catalogPlanContinue')?.addEventListener('click',()=>{if(catalogPublicState.modality)catalogGoToStep(2)});
   catalogEl('catalogCustomerForm')?.addEventListener('submit',catalogHandleCustomerSubmit);
   catalogEl('catalogSubmitRequest')?.addEventListener('click',catalogSubmitRequest);
@@ -412,4 +422,10 @@ async function toggleCatalogPublicProduct(id){
   const product=adminProductCache.find(item=>item.id===id);if(!product)return;
   const {error}=await sb.from('productos').update({catalogo_publico:product.catalogo_publico===false}).eq('id',id);
   if(error)return alert(error.message);await loadAdminProducts();
+}
+
+function catalogRenderCategories(){
+ const categories=[...new Set(catalogPublicState.products.flatMap(p=>[p.categoria,p.subcategoria]).filter(Boolean))];
+ const el=catalogEl('catalogPublicChips');if(!el)return;
+ el.innerHTML='<button type="button" class="active" data-public-category="">Todos</button>'+categories.map(c=>`<button type="button" data-public-category="${catalogEscape(c)}">${catalogEscape(c)}</button>`).join('');
 }

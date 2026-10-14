@@ -32,6 +32,12 @@ try{
  await role(admin);await db.exec('reset role');
  const before=(await db.query('select * from solicitudes_venta where clave_idempotencia=$1',[key])).rows[0];
  const privateBefore=(await db.query("select detalle from private.motor_precios_auditoria where tipo='solicitud' and entidad_id=$1",[before.id])).rows[0].detalle;
+ const historicBefore=(await db.query("select jsonb_build_object('ventas',(select jsonb_agg(to_jsonb(t)) from ventas t),'presupuestos',(select jsonb_agg(to_jsonb(t)) from presupuestos t),'solicitudes',(select jsonb_agg(to_jsonb(t)) from solicitudes_venta t),'cuentas',(select jsonb_agg(to_jsonb(t)) from cuentas_credito t),'cuotas',(select jsonb_agg(to_jsonb(t)) from cuotas_credito t)) d")).rows[0].d;
+ await rpc(db,'guardar_costo_producto_rest',{p_producto:phone,p_costo:420});
+ assert.equal((await rpc(db,'cotizar_producto',{p_producto_id:phone})).contado,903000);
+ const historicAfter=(await db.query("select jsonb_build_object('ventas',(select jsonb_agg(to_jsonb(t)) from ventas t),'presupuestos',(select jsonb_agg(to_jsonb(t)) from presupuestos t),'solicitudes',(select jsonb_agg(to_jsonb(t)) from solicitudes_venta t),'cuentas',(select jsonb_agg(to_jsonb(t)) from cuentas_credito t),'cuotas',(select jsonb_agg(to_jsonb(t)) from cuotas_credito t)) d")).rows[0].d;
+ check('Cambio manual de costo solo modifica futuro; operaciones históricas intactas',()=>assert.deepEqual(historicAfter,historicBefore));
+ await rpc(db,'guardar_costo_producto_rest',{p_producto:phone,p_costo:300});
  await rpc(db,'actualizar_dolar_rest',{p_valor:1550});
  q=await rpc(db,'cotizar_producto',{p_producto_id:phone});check('Nuevo dólar1550: contado672700; 6 total1201250; 9 total1537600',()=>{assert.equal(q.contado,672700);assert.equal(q.credito_personal[0].total,1201250);assert.equal(q.credito_personal[1].total,1537600)});
  const unchanged=(await db.query('select snapshot_solicitado from solicitudes_venta where id=$1',[before.id])).rows[0].snapshot_solicitado;

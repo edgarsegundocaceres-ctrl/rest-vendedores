@@ -33,6 +33,6 @@ const admin='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',seller='bbbbbbbb-bbbb-4bbb-8b
  await rpc(db,'actualizar_dolar_rest',{p_valor:1600});assert.equal((await rpc(db,'cotizar_producto',{p_producto_id:a56.producto_id})).contado,963200);
  assert.deepEqual((await db.query("select detalle from private.motor_precios_auditoria where entidad_id=$1 and tipo='venta_portal'",[sale.id])).rows[0].detalle,snapshot);checks++;
  await assert.rejects(db.query('delete from productos_costos where producto_id=$1',[a56.producto_id]),/desactivación/);checks++;
- assert.equal(matches.length,41);assert(!matches.some(m=>m.producto_rest.includes('G05')));checks++;
- console.log(`PASS ${checks} verificaciones híbridas: 41 costos seguros solo TEST; 86 celulares y 142 Hogar conservados; catálogo sin pérdidas; ejemplo de control; venta pendiente; seguridad; snapshots.`);
+ assert.equal(matches.length,32);assert(!matches.some(m=>/usado|as ?is|open box/i.test(m.proveedor+" "+m.producto_rest)));assert(!matches.some(m=>m.producto_rest.includes('G05')));checks++;
+ console.log(`PASS ${checks} verificaciones híbridas: 32 costos seguros solo TEST; 95 celulares y 142 Hogar conservados; catálogo sin pérdidas; ejemplo de control; venta pendiente; seguridad; snapshots.`);
 }finally{await db.close()}})().catch(e=>{console.error(e.message,e.where,e.stack);process.exitCode=1});

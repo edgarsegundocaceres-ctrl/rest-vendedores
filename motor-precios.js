@@ -12,10 +12,32 @@
  async function cost(id,category){
   if(profile?.rol!=='admin')return;
   if(category!=='celulares')return alert('Hogar conserva sus condiciones actuales.');
-  const field='costo_proveedor_usd';
-  const read=await sb.from('productos_costos').select(field).eq('producto_id',id).maybeSingle();if(read.error)return alert(read.error.message);
-  const value=prompt(category==='celulares'?'Costo proveedor USD (sin sumar los USD 10):':'Costo del producto en ARS:',read.data?.[field]??'');if(value===null)return;
-  const result=await sb.rpc('guardar_costo_producto_rest',{p_producto:id,p_costo:Number(value)});if(result.error)return alert(result.error.message);await loadAdminProducts();
+  document.getElementById('motorCostDialog')?.remove();
+  const dialog=document.createElement('dialog');dialog.id='motorCostDialog';
+  dialog.setAttribute('aria-labelledby','motorCostTitle');
+  dialog.style.cssText='width:min(560px,calc(100vw - 32px));max-height:85vh;overflow:auto;border:0;border-radius:16px;padding:20px;box-sizing:border-box';
+  dialog.innerHTML=`<h3 id="motorCostTitle">Costo proveedor · Celulares</h3><p>Ingresá solamente el costo del proveedor en USD. El motor agrega USD 10 automáticamente.</p><div id="motorCostSummary" aria-live="polite">Cargando condiciones…</div><form id="motorCostForm"><label for="motorCostValue">Costo proveedor USD</label><input id="motorCostValue" class="input" type="number" required min="0.0001" max="999999999.9999" step="0.0001"><p>Guardar un costo válido activa el nuevo motor para este producto. Solo afecta cotizaciones futuras; las operaciones anteriores conservan sus condiciones.</p><button id="motorCostSave" class="btn" type="submit" disabled>GUARDAR COSTO USD</button><button id="motorCostClose" class="btn btn2" type="button">CERRAR</button><p id="motorCostStatus" role="status"></p></form>`;
+  document.body.appendChild(dialog);if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');
+  const input=dialog.querySelector('#motorCostValue'),save=dialog.querySelector('#motorCostSave'),status=dialog.querySelector('#motorCostStatus');
+  dialog.querySelector('#motorCostClose').onclick=()=>dialog.remove();
+  async function refresh(){
+   const [price,fx]=await Promise.all([sb.rpc('inspeccionar_precio_rest',{p_producto:id}),sb.rpc('obtener_dolar_rest')]);
+   if(price.error||fx.error)throw price.error||fx.error;
+   if(!dialog.isConnected)return;
+   const q=price.data;input.value=q.costo_proveedor_usd??'';
+   dialog.querySelector('#motorCostSummary').innerHTML=`<p><b>${q.motor_version===2?'NUEVO MOTOR':'PRECIO LEGACY'}</b></p><p>Costo proveedor USD guardado: <b>${q.costo_proveedor_usd==null?'Sin cargar':esc(q.costo_proveedor_usd)}</b></p><p>Dólar REST vigente: <b>${money(fx.data.valor)}</b></p><p>Costo base ARS: <b>${q.costo_base_ars==null?'No calculado: conserva precio anterior':money(q.costo_base_ars)}</b></p><p>Contado: <b>${money(q.contado)}</b></p>${(q.credito_personal||[]).map(p=>`<p><b>${esc(p.cuotas)} cuotas de ${money(p.cuota)}</b><br>Total ${money(p.total)} · Última ${money(p.ultima_cuota)}${p.primera_cuota?' · Primera al inicio':''}</p>`).join('')}<p class="muted">Importes vigentes guardados, calculados por el motor central. Un costo escrito se aplica al guardar.</p>`;
+   save.disabled=false;
+  }
+  dialog.querySelector('#motorCostForm').onsubmit=async e=>{
+   e.preventDefault();if(save.disabled)return;
+   const raw=input.value.trim(),value=Number(raw);
+   if(!raw||!Number.isFinite(value)||value<=0||value>=1e9){status.textContent='Ingresá un costo USD válido mayor que cero.';return}
+   save.disabled=true;status.textContent='Guardando costo…';
+   try{const r=await sb.rpc('guardar_costo_producto_rest',{p_producto:id,p_costo:value});if(r.error)throw r.error;
+    await refresh();await loadAdminProducts();status.textContent='Costo guardado. Nuevas cotizaciones actualizadas; históricos conservados.';
+   }catch(error){status.textContent=error.message;save.disabled=false}
+  };
+  try{await refresh()}catch(error){status.textContent=error.message}
  }
  async function quote(){
   const p=selectedCatalogProduct;if(!p)return;

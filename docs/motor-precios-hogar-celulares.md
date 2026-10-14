@@ -15,7 +15,7 @@ Esta revisión reemplaza la estrategia de activación anterior del PR, no las f�
 
 ## Cruce de proveedor
 
-Informe íntegro A/B/C/D y manifiesto conservados fuera de este repositorio público; entregados privadamente a Edgar. 73 líneas: 41 matches seguros, 21 revisión, 11 variantes nuevas (no creadas). 86 productos REST sin equivalencia segura; incluye candidatos ambiguos. 40 de los 41 matches están habilitados en catálogo; un producto permanece inactivo. No se activan productos ocultos.
+Informe íntegro A/B/C/D y manifiesto conservados fuera de este repositorio público; entregados privadamente a Edgar. Criterio final: 73 líneas; 32 matches autorizados, 30 excluidos por condición (usados/As Is/Open Box), 9 requieren revisión y 2 variantes nuevas no creadas. 95 celulares REST permanecen legacy. De los 32 autorizados, 31 están habilitados en catálogo; un producto permanece inactivo. No se activan productos ocultos.
 
 Lista titulada STOCK ACTUALIZADO 5/9, sin año. No acredita stock actual. Los atributos omitidos no se completan por suposición. Colores REST agrupados solo se aceptan si están cubiertos por la lista; variantes con condición/capacidad dudosa no reciben costo. Poco X8 Pro Max no aparece en la lista efectivamente enviada.
 
@@ -60,7 +60,7 @@ Numeric PostgreSQL; totales a dos decimales. Cuota nominal round(total/n,2), úl
 
 ## Validación
 
-- 284 verificaciones híbridas: 41 costos seguros TEST mediante fixtures privados externos, 86 celulares y 142 Hogar preservados, mismo conjunto de productos públicos antes/después, ejemplo de control, venta pendiente, idempotencia, rechazos de importes, permisos y snapshot tras dólar1600.
+- 284 verificaciones híbridas: 32 costos seguros TEST mediante fixtures privados externos, 95 celulares y 142 Hogar preservados, mismo conjunto de productos públicos antes/después, ejemplo de control, venta pendiente, idempotencia, rechazos de importes, permisos y snapshot tras dólar1600.
 - 24 controles de motor/integración: ejemplo USD300/dólar1500, cambios1550, presupuesto, solicitud pública, conversión, cuotas/primera/última, históricos inalterados.
 - 79 controles financieros Fase2; UI financiera real → RPC → PostgreSQL con pagos, imputación, anulación y reversión.
 - UI motor real → RPC → PostgreSQL: Administración dólar, cotizador, venta pendiente y doble clic.
@@ -74,3 +74,11 @@ Ejecución del cruce: REST_PRIVATE_PRICE_FIXTURES apunta a los JSON privados ent
 Revisar cruce A/B/C/D y vigencia proveedor. Resolver variantes B si se desea ampliar activación. Revisar limitación financiera previa del portal. Ensayar instalación en staging equivalente y Auth real; PGlite no demuestra concurrencia entre conexiones independientes. No cargar costos ni aplicar migración hasta autorización final. No reaplicar Fase2 registrada externamente como 20261012213147. PR5 de analítica permanece separado.
 
 Migración pendiente única del PR: 20261013140257_motor_precios_hogar_celulares.sql, actualizada antes de aplicarse. Ninguna migración histórica editada. APP INTEGRAL REST MOTOS y G-CRED no modificados. No recalculados históricos, cobranzas, saldos, comisiones o snapshots.
+
+## Ajuste final: edición manual ADMIN
+
+Administración → Catálogo → producto Celulares → COSTO USD abre una ficha con costo proveedor guardado, Dólar REST vigente, base ARS, contado, total/cuota/última para 6 y 9 y el indicador NUEVO MOTOR / PRECIO LEGACY. Ingresar 420, no 430. GUARDAR COSTO USD usa la RPC ADMIN existente; no se duplican fórmulas en frontend. Antes de guardar muestra las condiciones vigentes, no una simulación del valor todavía no guardado.
+
+Primer costo válido activa el motor; modificaciones posteriores solo cambian cotizaciones futuras. No se cambia esquema/migración en este ajuste. Costos vacíos/negativos/invalidos se rechazan. Hogar continúa legacy. Usados, As Is y Open Box quedan fuera de la carga automática aunque su identidad hubiera coincidido; pueden revisarse y cargarse individualmente por Administración bajo su decisión explícita.
+
+Pruebas adicionales: ficha real JS → RPC → PostgreSQL, legacy → nuevo, costo posterior, costo vacío y comparación integral de operaciones guardadas antes/después del cambio de costo. Cuentas y cuotas históricas intactas. No hay costos cargados en producción por este trabajo.

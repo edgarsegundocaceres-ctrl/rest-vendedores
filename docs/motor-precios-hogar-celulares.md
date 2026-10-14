@@ -79,3 +79,7 @@ motor-precios-preview.html ejecuta las mismas migraciones y RPC en PostgreSQL ef
 Pendientes antes de merge/publicación: revisión de Edgar; costos reales de ambas categorías y dólar autorizado; ensayo de migración sobre staging equivalente a producción, pruebas nativas de concurrencia y Auth real, coordinación con PR5 de analítica (archivos compartidos, ramas independientes). La página principal del deployment no tiene el backend productivo migrado: utilizar el enlace explícito al preview aislado.
 
 No se cargó nueva lista de costos. No se recalcularon operaciones, cobranzas ni snapshots históricos. G-CRED y APP INTEGRAL REST MOTOS no modificados. No publicado en producción; detener antes del merge.
+
+## Revisión visual del preview
+
+Chrome: ejemplo Celular USD300/dólar1500 correcto; solicitud9 por1488000; cambio a1550 modifica nuevas cotizaciones a1537600; conversión explícita conserva1488000 y genera nueve vencimientos, primero al inicio, última165333,36. Ejemplo Hogar: contado800000, total6 1250000, total9 1600000. Archivo tests/motor-precios-mobile-preview.html permite revisar anchos320/360/390/412. No sustituye prueba física Android o WebViews. PR6 en borrador; preview desplegado sin promover producción.

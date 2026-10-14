@@ -1,85 +1,76 @@
-# Motor de precios Hogar + Celulares — revisión, no producción
+# PR #6 — transición híbrida Celulares, revisión 14/10/2026
 
-## Alcance e identidad
+Repositorio exclusivo: edgarsegundocaceres-ctrl/rest-vendedores. Supabase leído: gajlmcqaylezudttoaju. Rama work/motor-precios-hogar-celulares. Main base a75ac4c. No producción, merge ni escrituras productivas.
 
-Repositorio: edgarsegundocaceres-ctrl/rest-vendedores. Supabase auditado en lectura: gajlmcqaylezudttoaju. Rama: work/motor-precios-hogar-celulares, desde main a75ac4cac44d48dc9d17350f00436089b8dfefbc. No incorpora PR5 de analítica. No merge ni deployment productivo, no migración aplicada a producción.
+## Decisión vigente
 
-## Auditoría y condición de activación
+Esta revisión reemplaza la estrategia de activación anterior del PR, no las fórmulas autorizadas.
 
-El cálculo vigente partía de productos.precio_contado: 6 cuotas = contado × (1 + 0,095 × 6); 9 = contado × (1 + 0,11 × 9). productos_costos ya existe y su costo no tiene moneda USD. El inventario auditado encontró 142 productos Hogar y 127 Celulares, sin registros correspondientes en productos_costos. No se dedujeron costos desde precios ni se cargaron costos reales.
+- Celular con costo proveedor USD validado: (USD + 10) × Dólar REST. Contado ×1,40; total 6 ×2,50; total 9 ×3,20. Primera cuota al inicio, sin registrar un pago ficticio.
+- Celular sin costo USD: compatibilidad transitoria desde precio contado existente. Totales 6 = contado ×1,57; 9 = contado ×1,99. No se infieren costos.
+- Hogar: permanece en regla vigente, incluso si una estructura contiene costo ARS. Nueva fórmula Hogar queda inactiva hasta autorización; RPC de carga Hogar rechaza activación accidental.
+- Dólar REST inicial autorizado 1550 en la migración PENDIENTE; editable solo ADMIN. Seed auditado como instalación autorizada, sin atribuirlo a un usuario Auth inventado. No usa API externa.
+- No backfill de precios, operaciones o snapshots durante instalación. Solo al cargar un costo USD validado se sincroniza el contado de ese celular.
+- No se permite borrar/anular silenciosamente un costo USD ya activado: eso requeriría definir una transición explícita para no reutilizar un contado derivado como precio legado.
 
-**No activar con costos faltantes:** el motor rechaza cotizaciones sin costo y excluye esos productos del catálogo cotizable. Aplicar la migración ahora, sin preparar una carga autorizada de costos y Dólar REST, dejaría sin productos Hogar/Celulares cotizables. La lista posterior de celulares no resuelve por sí sola los costos ARS de Hogar. La revisión y carga reales son una etapa posterior autorizada.
+## Cruce de proveedor
 
-## Arquitectura
+Informe íntegro A/B/C/D y manifiesto conservados fuera de este repositorio público; entregados privadamente a Edgar. 73 líneas: 41 matches seguros, 21 revisión, 11 variantes nuevas (no creadas). 86 productos REST sin equivalencia segura; incluye candidatos ambiguos. 40 de los 41 matches están habilitados en catálogo; un producto permanece inactivo. No se activan productos ocultos.
 
-Se corrige private.calcular_cotizacion_producto y se reutilizan cotizar_producto, calcular_presupuesto_rest, crear_presupuesto_vendedor, catálogo público, solicitudes_venta, presupuestos y conversión existente. No hay motor financiero nuevo.
+Lista titulada STOCK ACTUALIZADO 5/9, sin año. No acredita stock actual. Los atributos omitidos no se completan por suposición. Colores REST agrupados solo se aceptan si están cubiertos por la lista; variantes con condición/capacidad dudosa no reciben costo. Poco X8 Pro Max no aparece en la lista efectivamente enviada.
 
-- Hogar reutiliza productos_costos.costo (ARS).
-- Celulares agrega costo_proveedor_usd nullable; costo ARS anterior se conserva sin reinterpretarlo.
-- private.dolar_rest_celulares guarda valor manual, fecha y administrador. Inicialmente sin valor: no se inventa una cotización.
-- private.motor_precios_auditoria guarda cambios y snapshots económicos privados inmutables. No hace backfill.
-- productos.precio_contado queda como proyección compatible: triggers lo derivan del costo. Actualizar Dólar REST sincroniza únicamente precios vigentes con costo USD válido. No se actualiza ningún precio durante la instalación.
-- La categoría económica de un producto existente no puede cambiarse entre monedas: requiere un producto de la categoría correcta para preservar históricos.
+Carga exclusivamente en PostgreSQL efímero TEST desde el manifiesto revisado. No hay script que cargue producción automáticamente. Datos y reportes de costos no se suben a GitHub (repositorio público) ni a los assets web. scripts/build-static.cjs agrega exclusión defensiva. El preview usa ejemplos de control, no publica la lista de proveedor. Producción tampoco incluye SQL, fixtures o páginas de prueba.
 
-Administración → Administrar catálogo → Dólar REST · Celulares permite leer/actualizar el dólar con fecha/usuario. Cada producto Hogar/Celulares tiene botón COSTO ARS/USD; el formulario de alta solicita costo, no contado independiente.
+## Fuente única y snapshots
 
-## Reglas y redondeo
+Se reutilizan private.calcular_cotizacion_producto, cotizar_producto, calcular_presupuesto_rest, crear_presupuesto_vendedor, productos, productos_costos, solicitudes_venta, presupuestos y conversión existente. costo_proveedor_usd guarda 420, nunca 430 para el ejemplo TEST. El adicional lo agrega el motor.
 
-Celulares: base = (proveedor USD + 10) × Dólar REST. Contado = base × 1,40; 6 total = base × 2,50; 9 total = base × 3,20. Hogar: base = costo ARS; contado = base × 1,60, mismos multiplicadores financiados. No se modifica Tarjeta Sol ni reglas de anticipos auxiliares; ahora consumen el contado central.
+Presupuestos y solicitudes guardan condiciones comerciales; auditoría privada guarda costo, adicional, dólar, base y plan. Ventas del portal también guardan snapshot privado inmutable. Actualizar dólar afecta solo precios/cotizaciones nuevas de celulares activados. Históricos no se recalculan.
 
-Numeric en PostgreSQL; costo USD y dólar admiten hasta cuatro decimales. Base mantiene precisión; totales se redondean a dos decimales. Cuota nominal = round(total/n,2). Última = total − nominal × (n−1). Se reutiliza el ajuste de última cuota del módulo financiero.
+## Portal Vendedor
 
-| Ejemplo | Contado | Total 6 | Cuota nominal 6 | Última 6 | Total 9 | Cuota nominal 9 | Última 9 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| USD300 + USD10, dólar1500 | 651000 | 1162500 | 193750 | 193750 | 1488000 | 165333,33 | 165333,36 |
-| Hogar ARS500000 | 800000 | 1250000 | 208333,33 | 208333,35 | 1600000 | 177777,78 | 177777,76 |
+Se restaura el resultado operativo anterior: Vendedor → venta pendiente → gestión habitual de Administración. No se crea solicitud intermedia ni se incorpora ese canal a la bandeja pública.
 
-Con dólar1550: base celular480500, contado672700, total6 1201250, total9 1537600. La solicitud guardada a1500 conserva total9 1488000.
+La nueva RPC registrar_venta_catalogo valida producto activo, vendedor, modalidad, cantidad, frecuencia, anticipo, cuota y total contra backend. Genera cliente y venta pendiente atómicamente. Doble clic/reintento usa UUID y bloqueo transaccional. La oportunidad vinculada debe pertenecer al vendedor y al producto. Importes alterados o cotización obsoleta se rechazan. No se permite INSERT directo que evada validación; UPDATE de campos económicos por vendedor queda bloqueado.
 
-## Snapshots y nuevas ventas
+El vendedor debe seleccionar un producto y cotización oficial; una venta manual sin producto identificable no puede validarse contra este motor. No se agrega una aprobación distinta ni se cambian los estados administrativos.
 
-Presupuestos y solicitudes conservan sus snapshots comerciales. Los costos, USD10, dólar y base ARS se guardan en auditoría privada, sin exponerlos al público ni al vendedor. Al convertir, se copia la condición económica de la solicitud/final autorizada; no se toma el dólar nuevo. La conversión reutiliza el motor financiero y asigna primer vencimiento al día operativo de la nueva venta para planes marcados al_inicio, sin registrar un pago ficticio. El cobro efectivo sigue correspondiendo al módulo de cobranzas.
+**Limitación previa conservada:** la venta pendiente directa del portal no crea cuenta/cuotas automáticamente. El esquema actual exige solicitud_id para cuentas_credito. No se alteró ese motor financiero ni se crearon solicitudes ocultas para sortearlo. La conversión de solicitudes públicas sí reutiliza la generación existente de cuenta/cuotas y fue probada. Integrar la aprobación de ventas pendientes con ese circuito requiere una decisión separada antes de prometer un circuito financiero automático completo para el portal.
 
-El Portal Vendedor ya no inserta ventas con importes libres: envía una solicitud validada contra el motor. Administración la revisa en Solicitudes y la convierte explícitamente. Los importes manipulados o cotizaciones desactualizadas se rechazan. No cambia comisiones históricas. Los RPC de edición no sobrescriben condiciones de solicitudes ya guardadas; Administración puede definir condiciones finales en el flujo existente.
+## Modalidades
 
-## Seguridad
+Portal/cotizador/presupuesto conservan contado, crédito personal 6/9, anticipo mensual, anticipo semanal y Tarjeta Sol. Catálogo público y condiciones finales administrativas de sus solicitudes conservan contado/6/9. Reglas de anticipos y Tarjeta Sol sin cambios; toman contado vigente. Solo crédito personal del celular activado tiene primera cuota al inicio; legado conserva vencimiento anterior.
 
-RPC de dólar/costo/inspección requieren auth.uid() y es_admin() en backend. Tablas económicas privadas sin grants públicos, RLS en costos y nuevas tablas. Funciones SECURITY DEFINER con search_path vacío y privilegios explícitos. Público recibe únicamente precios/planes finales. Vendedor no modifica costos, dólar ni importes; se bloquea INSERT directo a ventas y solicitudes para evitar saltarse la validación. ADMIN conserva permisos operativos.
+## Seguridad y precisión
 
-Bloqueo advisory transaccional compartido al cotizar y exclusivo al actualizar costo/dólar evita mezclar valores dentro de una operación. No se afirma que PGlite demuestre concurrencia entre conexiones PostgreSQL distintas: esa comprobación nativa queda como gate de publicación.
+ADMIN exclusivo para dólar/costos/inspección; sin costo, dólar o margen en respuesta pública. RLS y grants explícitos; SECURITY DEFINER con search_path vacío y control interno de identidad. Advisory compartido al cotizar y exclusivo al actualizar dólar/costos. Snapshots privados inmutables, no datos personales en el manifiesto proveedor.
 
-## Migración
+Numeric PostgreSQL; totales a dos decimales. Cuota nominal round(total/n,2), última = total − (n−1) × cuota nominal. No redondeo a miles.
 
-Única nueva: supabase/migrations/20261013140257_motor_precios_hogar_celulares.sql. No modifica migraciones históricas. No aplicada a producción. Antes de aplicar: comparar objetos y funciones contra Supabase real actualizado; resolver el registro externo de la migración financiera 20261012213147 respecto del archivo histórico local, sin ejecutarla nuevamente. Preparar carga autorizada de costos/dólar y revisar disponibilidad del catálogo.
+| Celular TEST: proveedor USD420 + 10; dólar1550 | Importe ARS |
+|---|---:|
+| Base | 666500 |
+| Contado | 933100 |
+| Total 6 | 1666250 |
+| Cuotas 1–5 | 277708,33 |
+| Última 6 | 277708,35 |
+| Total 9 | 2132800 |
+| Cuotas 1–8 | 236977,78 |
+| Última 9 | 236977,76 |
 
-## Pruebas
+## Validación
 
-- 24 verificaciones PostgreSQL del motor e integración: ambos ejemplos, dólar nuevo, snapshots, costos privados, permisos ADMIN/vendedor/anon, cotización obsoleta, presupuesto, solicitud, conversión, primera cuota y conservación de cuentas/cuotas existentes.
-- 79 controles financieros existentes con la nueva migración instalada y costos exclusivamente TEST: pagos, imputaciones, parcial, idempotencia, sobrepago, anulación, auditoría, permisos y conversión.
-- UI real del nuevo módulo → RPC → PostgreSQL: dólar ADMIN, moneda de costo, cotización vendedor, doble clic sin solicitud duplicada.
-- UI financiera → RPC → PostgreSQL: parcial, dos cuotas, fecha anterior, doble clic, anulación, agenda/ficha/recibo.
-- 53 tests JS existentes.
-- DOM catálogo, ficha, formulario, confirmación, Administración y vendedor.
+- 284 verificaciones híbridas: 41 costos seguros TEST mediante fixtures privados externos, 86 celulares y 142 Hogar preservados, mismo conjunto de productos públicos antes/después, ejemplo de control, venta pendiente, idempotencia, rechazos de importes, permisos y snapshot tras dólar1600.
+- 24 controles de motor/integración: ejemplo USD300/dólar1500, cambios1550, presupuesto, solicitud pública, conversión, cuotas/primera/última, históricos inalterados.
+- 79 controles financieros Fase2; UI financiera real → RPC → PostgreSQL con pagos, imputación, anulación y reversión.
+- UI motor real → RPC → PostgreSQL: Administración dólar, cotizador, venta pendiente y doble clic.
+- 53 tests JS existentes; DOM de catálogo, formulario, confirmación, Administración y vendedor.
+- Build local preview/producción: costos y reportes privados excluidos; assets comerciales conservados. No deployment productivo.
 
-Reproducir con PGLITE_MODULE_DIR y JSDOM_MODULE_DIR apuntando a node_modules con @electric-sql/pglite y jsdom:
+Ejecución del cruce: REST_PRIVATE_PRICE_FIXTURES apunta a los JSON privados entregados a Edgar. PGLITE_MODULE_DIR y JSDOM_MODULE_DIR deben apuntar a node_modules con PGlite y jsdom. Ejecutar tests/motor-precios.test.cjs, tests/motor-precios-hibrido.cjs, tests/motor-precios-ui.cjs, tests/motor-precios-finance-regression.cjs; repetir este último con MOTOR_FINANCE_UI=1; node --test tests/*.test.js; tests/ui-dom-smoke.cjs.
 
-```sh
-node --test tests/*.test.js
-node tests/motor-precios.test.cjs
-node tests/motor-precios-ui.cjs
-node tests/motor-precios-finance-regression.cjs
-MOTOR_FINANCE_UI=1 node tests/motor-precios-finance-regression.cjs
-node tests/ui-dom-smoke.cjs
-```
+## Pendientes antes de autorización final
 
-## Preview y pendientes
+Revisar cruce A/B/C/D y vigencia proveedor. Resolver variantes B si se desea ampliar activación. Revisar limitación financiera previa del portal. Ensayar instalación en staging equivalente y Auth real; PGlite no demuestra concurrencia entre conexiones independientes. No cargar costos ni aplicar migración hasta autorización final. No reaplicar Fase2 registrada externamente como 20261012213147. PR5 de analítica permanece separado.
 
-motor-precios-preview.html ejecuta las mismas migraciones y RPC en PostgreSQL efímero dentro de la pestaña; solo fixtures identificados TEST. No importa Supabase ni credenciales. Permite cambiar dólar, comparar Hogar/Celular, enviar solicitud y aprobar/convertir mostrando cronograma. Recargar elimina la base efímera.
-
-Pendientes antes de merge/publicación: revisión de Edgar; costos reales de ambas categorías y dólar autorizado; ensayo de migración sobre staging equivalente a producción, pruebas nativas de concurrencia y Auth real, coordinación con PR5 de analítica (archivos compartidos, ramas independientes). La página principal del deployment no tiene el backend productivo migrado: utilizar el enlace explícito al preview aislado.
-
-No se cargó nueva lista de costos. No se recalcularon operaciones, cobranzas ni snapshots históricos. G-CRED y APP INTEGRAL REST MOTOS no modificados. No publicado en producción; detener antes del merge.
-
-## Revisión visual del preview
-
-Chrome: ejemplo Celular USD300/dólar1500 correcto; solicitud9 por1488000; cambio a1550 modifica nuevas cotizaciones a1537600; conversión explícita conserva1488000 y genera nueve vencimientos, primero al inicio, última165333,36. Ejemplo Hogar: contado800000, total6 1250000, total9 1600000. Archivo tests/motor-precios-mobile-preview.html permite revisar anchos320/360/390/412. No sustituye prueba física Android o WebViews. PR6 en borrador; preview desplegado sin promover producción.
+Migración pendiente única del PR: 20261013140257_motor_precios_hogar_celulares.sql, actualizada antes de aplicarse. Ninguna migración histórica editada. APP INTEGRAL REST MOTOS y G-CRED no modificados. No recalculados históricos, cobranzas, saldos, comisiones o snapshots.

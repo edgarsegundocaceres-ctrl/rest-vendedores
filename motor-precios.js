@@ -11,7 +11,8 @@
  }
  async function cost(id,category){
   if(profile?.rol!=='admin')return;
-  const field=category==='celulares'?'costo_proveedor_usd':'costo';
+  if(category!=='celulares')return alert('Hogar conserva sus condiciones actuales.');
+  const field='costo_proveedor_usd';
   const read=await sb.from('productos_costos').select(field).eq('producto_id',id).maybeSingle();if(read.error)return alert(read.error.message);
   const value=prompt(category==='celulares'?'Costo proveedor USD (sin sumar los USD 10):':'Costo del producto en ARS:',read.data?.[field]??'');if(value===null)return;
   const result=await sb.rpc('guardar_costo_producto_rest',{p_producto:id,p_costo:Number(value)});if(result.error)return alert(result.error.message);await loadAdminProducts();
@@ -30,11 +31,11 @@
  async function submit(){
   if(busy)return;const p=selectedCatalogProduct,q=currentQuote;
   if(!p||!q||!['hogar','celulares'].includes(p.categoria)){smsg.textContent='Elegí un producto de Hogar o Celulares y calculá su cotización antes de enviar.';return}
-  busy=true;saleBtn.disabled=true;key=key||crypto.randomUUID();smsg.textContent='Enviando solicitud a Administración…';
-  try{const r=await sb.rpc('guardar_solicitud_venta',{p_clave_idempotencia:key,p_datos:{unidad:p.categoria,producto_id:p.id,interes_cliente_id:activeInteresVentaId||null,cliente_nombre:cn.value.trim(),cliente_dni:cd.value,cliente_telefono:cp.value,cliente_fecha_nacimiento:cbirth.value||null,cliente_direccion:caddr.value,cliente_ciudad:ccity.value,cliente_telefono_referencia:cref.value,forma_pago:q.paymentText,monto_total:q.total,anticipo:q.down||0,cantidad_cuotas:q.plan.count,valor_cuota:q.plan.value,frecuencia:q.plan.frequency,primer_vencimiento:new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Argentina/Cordoba'}).format(new Date()),notas:notes.value}});
-   if(r.error)throw r.error;smsg.textContent='Solicitud '+(r.data.codigo||r.data.id)+' enviada. Administración debe aprobarla; todavía no crea venta ni deuda.';key=null;currentQuote=null;activeInteresVentaId=null;
+  busy=true;saleBtn.disabled=true;key=key||crypto.randomUUID();smsg.textContent='Enviando venta…';
+  try{const r=await sb.rpc('registrar_venta_catalogo',{p_clave_idempotencia:key,p_datos:{unidad:p.categoria,modalidad:q.plan.formaPago,producto_id:p.id,interes_cliente_id:activeInteresVentaId||null,cliente_nombre:cn.value.trim(),cliente_dni:cd.value,cliente_telefono:cp.value,cliente_fecha_nacimiento:cbirth.value||null,cliente_direccion:caddr.value,cliente_ciudad:ccity.value,cliente_telefono_referencia:cref.value,forma_pago:q.paymentText,monto_total:q.total,anticipo:q.down||0,cantidad_cuotas:q.plan.count,valor_cuota:q.plan.value,frecuencia:q.plan.frequency,primer_vencimiento:new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Argentina/Cordoba'}).format(new Date()),notas:notes.value}});
+   if(r.error)throw r.error;smsg.textContent='Venta '+r.data.id+' cargada como Pendiente.';key=null;currentQuote=null;activeInteresVentaId=null;if(typeof loadSeller==='function')await loadSeller();
   }catch(e){smsg.textContent=e.message}finally{busy=false;saleBtn.disabled=false}
  }
- function init(){const cat=document.getElementById('pcat'),input=document.getElementById('pprice');const change=()=>{input.placeholder=cat.value==='celulares'?'Costo proveedor USD (sin adicional)':cat.value==='hogar'?'Costo del producto ARS':'Precio contado';input.step='0.0001'};cat?.addEventListener('change',change);if(cat&&input)change();}
+ function init(){const cat=document.getElementById('pcat'),input=document.getElementById('pprice');const change=()=>{input.placeholder=cat.value==='celulares'?'Costo proveedor USD (sin adicional)':'Precio contado';input.step='0.0001'};cat?.addEventListener('change',change);if(cat&&input)change();}
  root.RESTPrecios={load,cost,quote,submit,init,money};
 })(globalThis);

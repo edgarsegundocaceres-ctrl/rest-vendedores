@@ -1,3 +1,10 @@
 supabase/.temp/
 node_modules/
 .vercel/
+
+dist/
+
+# Nunca versionar costos reales de proveedor en este repositorio público.
+docs/precios/
+tests/fixtures/catalogo-*-auditado.json
+tests/fixtures/cruce-proveedor-celulares.json

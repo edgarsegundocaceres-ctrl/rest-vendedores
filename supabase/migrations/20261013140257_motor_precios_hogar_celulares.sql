@@ -5,11 +5,13 @@ create table private.dolar_rest_celulares (
  id boolean primary key default true check(id), valor numeric(18,4) check(valor>0 and valor<1000000000),
  actualizado_en timestamptz, actualizado_por uuid references public.perfiles(id)
 );
-insert into private.dolar_rest_celulares(id) values(true);
+-- Valor autorizado por Edgar; solo se aplica cuando esta migración sea autorizada.
+insert into private.dolar_rest_celulares(id,valor,actualizado_en) values(true,1550,now());
 create table private.motor_precios_auditoria (
  id bigint generated always as identity primary key,tipo text not null,entidad_id uuid,
  detalle jsonb not null,registrado_en timestamptz not null default now(),usuario_id uuid default auth.uid()
 );
+insert into private.motor_precios_auditoria(tipo,detalle) values('dolar_inicial',jsonb_build_object('valor',1550,'origen','Autorización Edgar 2026-10-14; instalación de migración'));
 create index motor_precios_auditoria_entidad on private.motor_precios_auditoria(tipo,entidad_id,id desc);
 alter table private.dolar_rest_celulares enable row level security;
 alter table private.motor_precios_auditoria enable row level security;
@@ -19,10 +21,18 @@ begin raise exception 'El historial comercial es inmutable'; end $$;
 create trigger motor_precios_auditoria_inmutable before update or delete on private.motor_precios_auditoria for each row execute function private.motor_precios_inmutable();
 
 create function private.base_comercial_producto(p_id uuid) returns jsonb language plpgsql set search_path='' as $$
-declare c text; ars numeric; usd numeric; dolar numeric; base numeric; contado numeric;
+declare c text; ars numeric; usd numeric; dolar numeric; base numeric; contado numeric; precio_anterior numeric;
 begin
  perform pg_catalog.pg_advisory_xact_lock_shared(731906);
- select p.categoria,pc.costo,pc.costo_proveedor_usd into c,ars,usd from public.productos p left join public.productos_costos pc on pc.producto_id=p.id where p.id=p_id;
+ select p.categoria,pc.costo,pc.costo_proveedor_usd,p.precio_contado into c,ars,usd,precio_anterior from public.productos p left join public.productos_costos pc on pc.producto_id=p.id where p.id=p_id;
+ -- TRANSICIÓN HÍBRIDA: Hogar no se activa; Celulares sin USD conserva regla vigente.
+ -- No deducir costos ni marcar como motor nuevo estas cotizaciones.
+ if c='hogar' or (c='celulares' and usd is null) then
+  return jsonb_build_object('motor_version',1,'compatibilidad_transitoria',true,'categoria',c,'contado',precio_anterior,
+   'credito_personal',jsonb_build_array(
+    jsonb_build_object('cuotas',6,'total',round(precio_anterior*1.57,2),'cuota',round(precio_anterior*1.57/6,2),'ultima_cuota',round(precio_anterior*1.57,2)-5*round(precio_anterior*1.57/6,2)),
+    jsonb_build_object('cuotas',9,'total',round(precio_anterior*1.99,2),'cuota',round(precio_anterior*1.99/9,2),'ultima_cuota',round(precio_anterior*1.99,2)-8*round(precio_anterior*1.99/9,2))));
+ end if;
  if c='hogar' then
   if ars is null or not (ars>0 and ars<1000000000000) then raise exception 'Costo ARS pendiente de configuración'; end if;
   base:=ars;contado:=round(base*1.60,2);
@@ -38,9 +48,8 @@ begin
  jsonb_build_object('cuotas',9,'total',round(base*3.20,2),'cuota',round(round(base*3.20,2)/9,2),'ultima_cuota',round(base*3.20,2)-8*round(round(base*3.20,2)/9,2),'primera_cuota','al_inicio'))));
 end $$;
 create function private.precio_motor_disponible(p_id uuid) returns boolean language sql stable set search_path='' as $$
- select exists(select 1 from public.productos p join public.productos_costos c on c.producto_id=p.id
- where p.id=p_id and ((p.categoria='hogar' and c.costo>0 and c.costo<1000000000000) or
- (p.categoria='celulares' and c.costo_proveedor_usd>0 and exists(select 1 from private.dolar_rest_celulares where valor>0))))
+ select exists(select 1 from public.productos p left join public.productos_costos c on c.producto_id=p.id
+ where p.id=p_id and (p.precio_contado>0 or (p.categoria='celulares' and c.costo_proveedor_usd>0)))
 $$;
 create function public.obtener_dolar_rest() returns jsonb language plpgsql security definer set search_path='' as $$
 begin
@@ -57,14 +66,14 @@ begin
  update private.dolar_rest_celulares set valor=p_valor,actualizado_en=now(),actualizado_por=auth.uid() where id;
  insert into private.motor_precios_auditoria(tipo,detalle) values('dolar_rest',jsonb_build_object('anterior',anterior,'nuevo',p_valor));
  -- Solo proyección vigente, nunca operaciones guardadas.
- update public.productos p set precio_contado=(private.base_comercial_producto(p.id)->>'contado')::numeric where p.categoria='celulares' and private.precio_motor_disponible(p.id);
+ update public.productos p set precio_contado=(private.base_comercial_producto(p.id)->>'contado')::numeric where p.categoria='celulares' and exists(select 1 from public.productos_costos c where c.producto_id=p.id and c.costo_proveedor_usd is not null);
  return public.obtener_dolar_rest();
 end $$;
 create function private.sincronizar_precio_costo() returns trigger language plpgsql security definer set search_path='' as $$
 declare pid uuid:=coalesce(new.producto_id,old.producto_id);
 begin
  perform pg_catalog.pg_advisory_xact_lock(731906);
- update public.productos p set precio_contado=case when private.precio_motor_disponible(p.id) then (private.base_comercial_producto(p.id)->>'contado')::numeric else 0 end where p.id=pid and p.categoria in ('hogar','celulares');
+ update public.productos p set precio_contado=(private.base_comercial_producto(p.id)->>'contado')::numeric where p.id=pid and p.categoria='celulares' and new.costo_proveedor_usd is not null;
  return coalesce(new,old);
 end $$;
 create trigger motor_precio_desde_costo after insert or update or delete on public.productos_costos for each row execute function private.sincronizar_precio_costo();
@@ -73,11 +82,8 @@ begin
  if tg_op='UPDATE' and new.categoria is distinct from old.categoria and (new.categoria in ('hogar','celulares') or old.categoria in ('hogar','celulares')) then
   raise exception 'La categoría económica no puede cambiarse: creá un producto en la categoría correcta para preservar moneda e históricos';
  end if;
- if new.categoria in ('hogar','celulares') then
-  if tg_op='INSERT' then new.precio_contado:=0;
-  elsif new.precio_contado is distinct from old.precio_contado or new.categoria is distinct from old.categoria then
-   new.precio_contado:=case when private.precio_motor_disponible(new.id) then (private.base_comercial_producto(new.id)->>'contado')::numeric else 0 end;
-  end if;
+ if new.categoria='celulares' and exists(select 1 from public.productos_costos c where c.producto_id=new.id and c.costo_proveedor_usd is not null) then
+  new.precio_contado:=(private.base_comercial_producto(new.id)->>'contado')::numeric;
  end if;
  return new;
 end $$;
@@ -90,6 +96,7 @@ begin
  perform pg_catalog.pg_advisory_xact_lock(731906);
  select categoria into c from public.productos where id=p_producto;
  if c not in ('hogar','celulares') or c is null then raise exception 'Producto REST inválido'; end if;
+ if c='hogar' then raise exception 'Hogar conserva el motor vigente; activación pendiente de autorización'; end if;
  if c='hogar' then insert into public.productos_costos(producto_id,costo) values(p_producto,p_costo) on conflict(producto_id) do update set costo=excluded.costo;
  else insert into public.productos_costos(producto_id,costo,costo_proveedor_usd) values(p_producto,0,p_costo) on conflict(producto_id) do update set costo_proveedor_usd=excluded.costo_proveedor_usd; end if;
  insert into private.motor_precios_auditoria(tipo,entidad_id,detalle) values('costo',p_producto,jsonb_build_object('moneda',case when c='hogar' then 'ARS' else 'USD' end,'valor',p_costo));
@@ -127,7 +134,7 @@ begin
 
   if v_producto.categoria in ('hogar','celulares') then
     v_resultado:=private.base_comercial_producto(p_producto_id);
-    return jsonb_build_object('motor_version',2,'contado',v_resultado->'contado','credito_personal',v_resultado->'credito_personal',
+    return jsonb_build_object('motor_version',v_resultado->'motor_version','compatibilidad_transitoria',v_resultado->'compatibilidad_transitoria','contado',v_resultado->'contado','credito_personal',v_resultado->'credito_personal',
       'mensual',jsonb_build_object('anticipo_min',round((v_resultado->>'contado')::numeric*0.40,2),'tasa',0.075,'cuotas',jsonb_build_array(6,9,12)),
       'semanal',jsonb_build_object('anticipo_min',round((v_resultado->>'contado')::numeric*0.35,2),'tasa',0.0105,'cuotas',jsonb_build_array(12,16,20)));
   else
@@ -204,13 +211,13 @@ begin
       'codigo','credito_6','titulo','Crédito personal · 6 cuotas',
       'total',(v_seis->>'total')::numeric,'anticipo',0,'cantidad_cuotas',6,
       'valor_cuota',(v_seis->>'cuota')::numeric,'frecuencia','mensual',
-      'motor_version',2,'primera_cuota','al_inicio','ultima_cuota',v_seis->'ultima_cuota'
+      'motor_version',v_cotizacion->'motor_version','primera_cuota',v_seis->'primera_cuota','ultima_cuota',v_seis->'ultima_cuota'
     ) end,
     'credito_9', case when v_nueve is not null then jsonb_build_object(
       'codigo','credito_9','titulo','Crédito personal · 9 cuotas',
       'total',(v_nueve->>'total')::numeric,'anticipo',0,'cantidad_cuotas',9,
       'valor_cuota',(v_nueve->>'cuota')::numeric,'frecuencia','mensual',
-      'motor_version',2,'primera_cuota','al_inicio','ultima_cuota',v_nueve->'ultima_cuota'
+      'motor_version',v_cotizacion->'motor_version','primera_cuota',v_nueve->'primera_cuota','ultima_cuota',v_nueve->'ultima_cuota'
     ) end
   ));
 end;
@@ -314,7 +321,7 @@ begin
     return jsonb_build_object(
       'title',format('Crédito personal · %s cuotas',p_cuotas),
       'total',(v_option->>'total')::numeric,'down',0,'count',p_cuotas,
-      'value',(v_option->>'cuota')::numeric,'frequency','mensual','primera_cuota','al_inicio','ultima_cuota',v_option->'ultima_cuota','motor_version',2,
+      'value',(v_option->>'cuota')::numeric,'frequency','mensual','primera_cuota',v_option->'primera_cuota','ultima_cuota',v_option->'ultima_cuota','motor_version',v_quote->'motor_version',
       'paymentText',format('Crédito personal · %s cuotas de %s',p_cuotas,(v_option->>'cuota')::numeric)
     );
   elsif p_modalidad in ('Anticipo + cuotas mensuales','Anticipo + cuotas semanales') then
@@ -525,7 +532,7 @@ begin
   v_anticipo := (v_plan->>'anticipo')::numeric;
   v_valor := (v_plan->>'valor_cuota')::numeric;
   v_frecuencia := v_plan->>'frecuencia';
-  v_primer_vencimiento := case when v_cantidad > 0 then (now() at time zone 'America/Argentina/Cordoba')::date else null end;
+  v_primer_vencimiento := case when v_cantidad > 0 then case when v_plan->>'primera_cuota'='al_inicio' then (now() at time zone 'America/Argentina/Cordoba')::date else current_date+30 end else null end;
 
   v_plan := v_plan || jsonb_build_object('primer_vencimiento',v_primer_vencimiento);
   v_producto.precio_contado:=(private.calcular_cotizacion_producto(v_producto.id)->>'contado')::numeric;
@@ -606,7 +613,7 @@ begin
   select s.* into v_solicitud
   from public.solicitudes_venta s
   where s.id = p_solicitud_id
-    and (s.canal_origen in ('catalogo_publico_vendedor','catalogo_publico_directo') or (s.canal_origen='portal_vendedor' and s.snapshot_solicitado->>'motor_version'='2'))
+    and s.canal_origen in ('catalogo_publico_vendedor','catalogo_publico_directo')
   for update;
   if not found then raise exception 'Solicitud no encontrada'; end if;
 
@@ -682,7 +689,7 @@ begin
   select s.* into v_solicitud
   from public.solicitudes_venta s
   where s.id = p_solicitud_id
-    and (s.canal_origen in ('catalogo_publico_vendedor','catalogo_publico_directo') or (s.canal_origen='portal_vendedor' and s.snapshot_solicitado->>'motor_version'='2'))
+    and s.canal_origen in ('catalogo_publico_vendedor','catalogo_publico_directo')
   for update;
   if not found then raise exception 'Solicitud no encontrada'; end if;
   if v_solicitud.estado_comercial in ('rechazada','convertida_en_venta') then raise exception 'La solicitud ya está cerrada'; end if;
@@ -698,7 +705,7 @@ begin
   if (v_plan->>'cantidad_cuotas')::integer > 0
     and p_primer_vencimiento < current_date then raise exception 'El primer vencimiento no puede estar en el pasado'; end if;
   v_plan := v_plan || jsonb_build_object(
-    'primer_vencimiento',case when (v_plan->>'cantidad_cuotas')::integer > 0 then (now() at time zone 'America/Argentina/Cordoba')::date else null end
+    'primer_vencimiento',case when (v_plan->>'cantidad_cuotas')::integer > 0 then case when v_plan->>'primera_cuota'='al_inicio' then (now() at time zone 'America/Argentina/Cordoba')::date else coalesce(p_primer_vencimiento,current_date+30) end else null end
   );
 
   v_producto.precio_contado:=(private.calcular_cotizacion_producto(v_producto.id)->>'contado')::numeric;
@@ -781,7 +788,7 @@ begin
   select s.* into v_solicitud
   from public.solicitudes_venta s
   where s.id = p_solicitud_id
-    and (s.canal_origen in ('catalogo_publico_vendedor','catalogo_publico_directo') or (s.canal_origen='portal_vendedor' and s.snapshot_solicitado->>'motor_version'='2'))
+    and s.canal_origen in ('catalogo_publico_vendedor','catalogo_publico_directo')
   for update;
   if not found then raise exception 'Solicitud no encontrada'; end if;
 
@@ -1153,7 +1160,7 @@ begin
       v_cliente_telefono, v_cliente_fecha_nacimiento, v_cliente_direccion, v_cliente_ciudad,
       v_cliente_telefono_referencia, v_forma_pago, v_total, v_anticipo,
       v_cantidad, v_valor_cuota, v_frecuencia, v_primer_vencimiento, v_notas,
-      jsonb_build_object('motor_version',2,'producto',jsonb_build_object('id',v_producto.id,'nombre',v_producto.nombre,'precio_contado',v_producto.precio_contado),'seleccion',
+      jsonb_build_object('motor_version',private.base_comercial_producto(v_producto.id)->'motor_version','producto',jsonb_build_object('id',v_producto.id,'nombre',v_producto.nombre,'precio_contado',v_producto.precio_contado),'seleccion',
         jsonb_build_object('codigo',case when v_cantidad=0 then 'contado' else 'credito_'||v_cantidad end,'titulo',v_forma_pago,'total',v_total,'anticipo',v_anticipo,'cantidad_cuotas',v_cantidad,'valor_cuota',v_valor_cuota,'frecuencia',v_frecuencia,'primera_cuota',v_precio->'primera_cuota','ultima_cuota',v_precio->'ultima_cuota','primer_vencimiento',v_primer_vencimiento))
     )
     on conflict (clave_idempotencia) do nothing
@@ -1225,7 +1232,7 @@ begin
  if auth.uid() is null or not public.es_admin() then raise exception 'Solo Administración'; end if;
  return private.base_comercial_producto(p_producto);
 end $$;
--- El canal público continúa usando su RPC; vendedor envía solicitud y ADMIN aprueba.
+-- El canal público conserva solicitudes. El vendedor registra ventas pendientes mediante RPC validada.
 -- Evita insertar ventas arbitrarias directamente mediante PostgREST.
 create policy motor_ventas_insert_admin on public.ventas as restrictive for insert to authenticated with check(public.es_admin());
 create policy motor_solicitudes_insert_rpc on public.solicitudes_venta as restrictive for insert to authenticated with check(public.es_admin());
@@ -1234,3 +1241,74 @@ create policy motor_solicitudes_update_admin on public.solicitudes_venta as rest
 revoke all on function private.base_comercial_producto(uuid),private.precio_motor_disponible(uuid),private.proteger_precio_derivado(),private.sincronizar_precio_costo(),private.capturar_motor_precios(),private.motor_precios_inmutable() from public,anon,authenticated;
 revoke all on function public.obtener_dolar_rest(),public.actualizar_dolar_rest(numeric),public.guardar_costo_producto_rest(uuid,numeric),public.listar_productos_comerciales(),public.inspeccionar_precio_rest(uuid) from public,anon;
 grant execute on function public.obtener_dolar_rest(),public.actualizar_dolar_rest(numeric),public.guardar_costo_producto_rest(uuid,numeric),public.listar_productos_comerciales(),public.inspeccionar_precio_rest(uuid) to authenticated;
+
+-- No desactivar silenciosamente un celular ya migrado volviendo a interpretar su contado como legado.
+create function private.proteger_costo_activado() returns trigger language plpgsql set search_path='' as $$
+begin
+ if old.costo_proveedor_usd is not null and (tg_op='DELETE' or new.costo_proveedor_usd is null) then
+  raise exception 'La desactivación de un costo USD requiere una transición autorizada';
+ end if;
+ return coalesce(new,old);
+end $$;
+create trigger motor_costo_activado before update or delete on public.productos_costos for each row execute function private.proteger_costo_activado();
+revoke all on function private.proteger_costo_activado() from public,anon,authenticated;
+
+-- Misma operación que el Portal previo: cliente + VENTA PENDIENTE, sin solicitud intermedia.
+-- Snapshot privado conserva cotización y clave idempotente; no crea deuda ni cobra la primera cuota.
+create unique index motor_venta_clave on private.motor_precios_auditoria ((detalle->>'clave_idempotencia')) where tipo='venta_portal';
+create function public.registrar_venta_catalogo(p_datos jsonb,p_clave_idempotencia uuid) returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare vid uuid:=public.mi_vendedor_id(); pid uuid; cid uuid; sale uuid; q jsonb; economic jsonb;
+ p public.productos%rowtype; previous private.motor_precios_auditoria%rowtype;
+ cliente text:=btrim(p_datos->>'cliente_nombre'); modo text:=p_datos->>'modalidad'; iid uuid;
+begin
+ if auth.uid() is null or vid is null then raise exception 'Vendedor no habilitado'; end if;
+ if p_clave_idempotencia is null then raise exception 'Clave de envío obligatoria'; end if;
+ perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_clave_idempotencia::text,731907));
+ select * into previous from private.motor_precios_auditoria where tipo='venta_portal' and detalle->>'clave_idempotencia'=p_clave_idempotencia::text;
+ if found then
+  if previous.usuario_id<>auth.uid() then raise exception 'Clave de envío inválida'; end if;
+  return jsonb_build_object('id',previous.entidad_id,'estado','pendiente','duplicado',true);
+ end if;
+ if jsonb_typeof(p_datos) is distinct from 'object' or cliente is null or length(cliente) not between 2 and 120 then raise exception 'Ingresá el nombre del cliente'; end if;
+ if length(coalesce(p_datos->>'notas',''))>4000 then raise exception 'Notas demasiado largas'; end if;
+ pid:=(p_datos->>'producto_id')::uuid; iid:=nullif(p_datos->>'interes_cliente_id','')::uuid;
+ perform pg_catalog.pg_advisory_xact_lock_shared(731906);
+ select * into p from public.productos where id=pid and activo and categoria in ('hogar','celulares');
+ if not found then raise exception 'Elegí un producto activo del catálogo'; end if;
+ q:=public.calcular_presupuesto_rest(pid,modo,coalesce((p_datos->>'cantidad_cuotas')::integer,0),coalesce((p_datos->>'anticipo')::numeric,0));
+ if (p_datos->>'monto_total')::numeric is distinct from (q->>'total')::numeric
+ or (p_datos->>'valor_cuota')::numeric is distinct from (q->>'value')::numeric
+ or (p_datos->>'cantidad_cuotas')::integer is distinct from (q->>'count')::integer
+ or coalesce((p_datos->>'anticipo')::numeric,0) is distinct from (q->>'down')::numeric
+ or p_datos->>'frecuencia' is distinct from q->>'frequency' then
+  raise exception 'La cotización cambió o los importes no son oficiales; volvé a cotizar';
+ end if;
+ if iid is not null then
+  perform 1 from public.intereses_clientes where id=iid and vendedor_id=vid and estado in ('asignado','en_gestion') and venta_id is null and (producto_id is null or producto_id=pid) for update;
+  if not found then raise exception 'Oportunidad no disponible para este vendedor/producto'; end if;
+ end if;
+ economic:=private.base_comercial_producto(pid);
+ insert into public.clientes(nombre,dni,telefono,fecha_nacimiento,direccion,ciudad,telefono_referencia,creado_por_vendedor_id)
+ values(cliente,nullif(p_datos->>'cliente_dni',''),nullif(p_datos->>'cliente_telefono',''),nullif(p_datos->>'cliente_fecha_nacimiento','')::date,nullif(p_datos->>'cliente_direccion',''),nullif(p_datos->>'cliente_ciudad',''),nullif(p_datos->>'cliente_telefono_referencia',''),vid) returning id into cid;
+ insert into public.ventas(vendedor_id,cliente_id,producto,monto_total,forma_pago,anticipo_esperado,notas,estado,interes_cliente_id)
+ values(vid,cid,p.nombre,(q->>'total')::numeric,q->>'paymentText',case when q->>'primera_cuota'='al_inicio' then (q->>'value')::numeric else (q->>'down')::numeric end,nullif(p_datos->>'notas',''),'pendiente',iid) returning id into sale;
+ insert into private.motor_precios_auditoria(tipo,entidad_id,detalle) values('venta_portal',sale,economic||jsonb_build_object('producto_id',pid,'vendedor_id',vid,'clave_idempotencia',p_clave_idempotencia,'seleccion',q));
+ if iid is not null then update public.intereses_clientes set venta_id=sale,estado='venta_realizada',convertido_en=now(),actualizado_en=now() where id=iid; end if;
+ return jsonb_build_object('id',sale,'estado','pendiente','duplicado',false);
+end $$;
+revoke all on function public.registrar_venta_catalogo(jsonb,uuid) from public,anon;
+grant execute on function public.registrar_venta_catalogo(jsonb,uuid) to authenticated;
+
+-- Evitar que un UPDATE directo del vendedor eluda la cotización validada.
+create function private.proteger_importes_venta() returns trigger language plpgsql set search_path='' as $$
+begin
+ if current_user='authenticated' and not public.es_admin() and
+  (new.monto_total,new.forma_pago,new.anticipo_esperado,new.producto,new.vendedor_id,new.cliente_id) is distinct from
+  (old.monto_total,old.forma_pago,old.anticipo_esperado,old.producto,old.vendedor_id,old.cliente_id) then
+  raise exception 'Los importes y el producto de la venta se validan en backend';
+ end if;
+ return new;
+end $$;
+create trigger motor_venta_importes before update on public.ventas for each row execute function private.proteger_importes_venta();
+revoke all on function private.proteger_importes_venta() from public,anon,authenticated;

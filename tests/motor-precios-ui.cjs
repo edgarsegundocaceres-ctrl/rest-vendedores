@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {setup,rpc,root}=require('./motor-precios-db.cjs'),modules=process.env.PGLITE_MODULE_DIR;
+const {PGlite}=require(path.join(modules,'@electric-sql/pglite')),{JSDOM}=require(path.join(modules,'jsdom'));
+(async()=>{const db=new PGlite();try{await setup(db);await rpc(db,'guardar_costo_producto_rest',{p_producto:'dddddddd-dddd-4ddd-8ddd-000000000002',p_costo:300});await rpc(db,'actualizar_dolar_rest',{p_valor:1500});
+const ids=['qMode','qInstall','qAdvance','smsg','saleBtn','cn','cd','cp','cbirth','caddr','ccity','cref','notes','pprice'];
+const dom=new JSDOM('<div id="motorPreciosAdmin"></div><select id="pcat"><option>celulares</option></select>'+ids.map(id=>`<input id="${id}">`).join(''),{runScripts:'dangerously',url:'https://test.invalid'}),w=dom.window,d=w.document;
+Object.defineProperty(w.crypto,'randomUUID',{value:()=>crypto.randomUUID()});w.sb={rpc:async(name,args)=>{try{return{data:await rpc(db,name,args)}}catch(error){return{error}}}};
+w.eval(`var profile={rol:'admin'},selectedCatalogProduct={id:'dddddddd-dddd-4ddd-8ddd-000000000002',categoria:'celulares'},currentQuote=null,activeInteresVentaId=null;function recruitmentIsDemo(){return false}function qerr(m){throw Error(m)}function qshow(title,lines,total,installment,down,paymentText,plan){currentQuote={title,lines,total,installment,down,paymentText,plan}}async function loadAdminProducts(){}`);
+w.eval(fs.readFileSync(path.join(root,'motor-precios.js'),'utf8'));await w.RESTPrecios.load();assert.match(d.getElementById('motorPreciosAdmin').textContent,/Dólar REST/);assert.equal(Number(d.getElementById('motorDolar').value),1500);
+d.getElementById('motorDolar').value=1550;await d.getElementById('motorDolarSave').onclick();assert.equal(Number(d.getElementById('motorDolar').value),1550);
+w.RESTPrecios.init();assert.match(d.getElementById('pprice').placeholder,/proveedor USD/);
+d.getElementById('qMode').value='Crédito personal';d.getElementById('qInstall').value='9';await w.RESTPrecios.quote();assert.equal(w.eval('currentQuote.total'),1537600);assert.equal(w.eval('currentQuote.plan.value'),170844.44);
+await db.exec("set role authenticated;set app.test_uid='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'");w.eval("profile={rol:'vendedor'}");for(const [k,v] of Object.entries({cn:'TEST UI Motor',cd:'39999333',cp:'5493855550333',caddr:'TEST 33',ccity:'La Banda'}))d.getElementById(k).value=v;
+await Promise.all([w.RESTPrecios.submit(),w.RESTPrecios.submit()]);assert.match(d.getElementById('smsg').textContent,/todavía no crea venta ni deuda/);await db.exec('reset role');const rows=(await db.query("select * from solicitudes_venta where cliente_nombre='TEST UI Motor'")).rows;assert.equal(rows.length,1);assert.equal(Number(rows[0].monto_total),1537600);assert.equal(rows[0].venta_id,null);assert.equal(rows[0].snapshot_solicitado.seleccion.primera_cuota,'al_inicio');
+dom.window.close();console.log('PASS UI real → RPC → PostgreSQL: ADMIN dólar, moneda del costo, cotización vendedor y doble clic de solicitud');
+}finally{await db.close()}})().catch(e=>{console.error(e.message,e.stack);process.exitCode=1});

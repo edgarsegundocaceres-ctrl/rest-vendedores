@@ -14,6 +14,7 @@ function preparedHtml(){
   return sourceHtml
     .replace('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>',`<script>window.supabase={createClient:()=>({})};window.scrollTo=()=>{};window.alert=()=>{};window.confirm=()=>true;window.prompt=()=>'';window.open=()=>{};</script>`)
     .replace('<script src="/captacion-vendedores.js"></script>',`<script>${recruitmentScript}</script>`)
+    .replace('<script src="/motor-precios.js"></script>',`<script>${fs.readFileSync(path.join(root,'motor-precios.js'),'utf8')}</script>`)
     .replace('<script src="/catalogo-publico.js"></script>',`<script>${catalogScript}</script>`)
     .replace('<script src="/cobranzas.js"></script>',`<script>${fs.readFileSync(path.join(root,'cobranzas.js'),'utf8')}</script>`);
 }
@@ -49,7 +50,7 @@ async function render(route){
   for(const [id,value] of Object.entries(values))d.getElementById(id).value=value;
   d.getElementById('catalogCustomerForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
   assert.equal(d.getElementById('catalogReviewStep').classList.contains('hide'),false);
-  assert.match(d.getElementById('catalogReviewSummary').textContent,/6 ×/);
+  assert.match(d.getElementById('catalogReviewSummary').textContent,/6 cuotas de/);
   // El cliente debe confirmar otra vez si cambiaron las condiciones en servidor.
   w.eval(`catalogPublicState.demo=false;sb.rpc=async()=>({data:{ok:false,condiciones_actualizadas:true,mensaje:'Las condiciones cambiaron. Revisá los importes.',producto_actualizado:{...catalogPublicState.product,version_cotizacion:'actualizada',precio_contado:150000,opciones:catalogDemoOptions(150000)}}})`);
   await w.catalogSubmitRequest();

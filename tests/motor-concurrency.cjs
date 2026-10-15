@@ -67,7 +67,8 @@ const cases=[
   const id=await request(o,a);const before=await state(o);await a.query('begin');const first=await rpc(a,'convertir_solicitud_compra',{p_solicitud_id:id});assert(first.ok);
   const waiting=pending(rpc(b,'convertir_solicitud_compra',{p_solicitud_id:id}));await blocked(o,b,a);await a.query('commit');const second=await unwrap(waiting);assert(second.ok);assert(second.duplicado);assert.equal(second.venta_id,first.venta_id);
   const after=await state(o);assert.equal(after.ventas.length-before.ventas.length,1);assert.equal(after.cuentas_credito.length-before.cuentas_credito.length,1);assert.equal(after.cuotas_credito.length-before.cuotas_credito.length,9);
-  assert.equal(after.comisiones.length-before.comisiones.length,1);
+  // Existing operation creates commissions on delivery, not approval.
+  assert.deepEqual(after.comisiones,before.comisiones);
   const account=after.cuentas_credito.find(x=>x.solicitud_id===id),quotas=after.cuotas_credito.filter(x=>x.cuenta_id===account.id);
   assert.equal(quotas.reduce((sum,q)=>sum+Math.round(Number(q.importe)*100),0),213280000);
   assert.equal(after['private.motor_precios_auditoria'].filter(x=>x.tipo==='venta'&&x.entidad_id===first.venta_id).length,1);
@@ -78,7 +79,7 @@ const cases=[
   // TEST-only late trigger: conversion already made a sale, account, quotas and snapshot.
   await o.query(`create function public.test_fail_late() returns trigger language plpgsql as $$ begin
    if new.tipo='convertida_en_venta' then
-    if not exists(select 1 from cuentas_credito c join cuotas_credito q on q.cuenta_id=c.id join private.motor_precios_auditoria m on m.entidad_id=c.venta_id and m.tipo='venta' where c.solicitud_id=new.solicitud_id) then raise exception 'TEST_SETUP missing earlier effects'; end if;
+    if not exists(select 1 from public.cuentas_credito c join public.cuotas_credito q on q.cuenta_id=c.id join private.motor_precios_auditoria m on m.entidad_id=c.venta_id and m.tipo='venta' where c.solicitud_id=new.solicitud_id) then raise exception 'TEST_SETUP missing earlier effects'; end if;
     raise exception 'TEST_INJECTED_AFTER_FINANCIAL_EFFECTS';
    end if;return new;end $$;
    create trigger test_fail_late before insert on solicitudes_compra_historial for each row execute function public.test_fail_late()`);
@@ -88,7 +89,7 @@ const cases=[
  ['6 backend rejects manipulated client amounts',async(o,a)=>{
   const args=await saleArgs(a);const before=await state(o),data=JSON.parse(args.p_datos);
   for(const change of [{monto_total:1},{valor_cuota:1},{cantidad_cuotas:7},{anticipo:1}]){
-   await assert.rejects(rpc(a,'registrar_venta_catalogo',{...args,p_clave_idempotencia:randomUUID(),p_datos:JSON.stringify({...data,...change})}),/cotización cambió|cuotas|modalidad|anticipo/i);
+   await assert.rejects(rpc(a,'registrar_venta_catalogo',{...args,p_clave_idempotencia:randomUUID(),p_datos:JSON.stringify({...data,...change})}),/cotización cambió|cuotas|modalidad|anticipo|plan de crédito ya no está disponible/i);
    assert.deepEqual(await state(o),before);
   }
   const sale=await rpc(a,'registrar_venta_catalogo',args);const snap=await snapshot(o,sale.id);assert.equal(snap.costo_base_ars,666500);assert.equal(snap.contado,933100);

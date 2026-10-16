@@ -1,5 +1,5 @@
-const CACHE_NAME = 'rest-shell-v1.6.0';
-const SHELL = ['/', '/captacion-vendedores.css', '/captacion-vendedores.js', '/catalogo-publico.css', '/catalogo-publico.js', '/cobranzas.css', '/cobranzas.js', '/manifest.webmanifest', '/icons/rest-192.png', '/icons/rest-512.png'];
+const CACHE_NAME = 'rest-shell-v1.6.3-costo-admin';
+const SHELL = ['/', '/captacion-vendedores.css', '/captacion-vendedores.js', '/catalogo-publico.css', '/catalogo-publico.js', '/motor-precios.js', '/cobranzas.css', '/cobranzas.js', '/manifest.webmanifest', '/icons/rest-192.png', '/icons/rest-512.png'];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -32,7 +32,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (url.pathname === '/manifest.webmanifest' || url.pathname.startsWith('/icons/') || url.pathname === '/captacion-vendedores.css' || url.pathname === '/captacion-vendedores.js' || url.pathname === '/catalogo-publico.css' || url.pathname === '/catalogo-publico.js' || url.pathname === '/cobranzas.css' || url.pathname === '/cobranzas.js') {
+  if (url.pathname === '/manifest.webmanifest' || url.pathname.startsWith('/icons/') || url.pathname === '/captacion-vendedores.css' || url.pathname === '/captacion-vendedores.js' || url.pathname === '/catalogo-publico.css' || url.pathname === '/catalogo-publico.js' || url.pathname === '/motor-precios.js' || url.pathname === '/cobranzas.css' || url.pathname === '/cobranzas.js') {
     event.respondWith(caches.match(req).then(cached => cached || fetch(req)));
   }
 });

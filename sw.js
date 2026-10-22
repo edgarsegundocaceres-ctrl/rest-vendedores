@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rest-shell-v1.6.3-costo-admin';
+const CACHE_NAME = 'rest-shell-v1.6.4-cuotas-100';
 const SHELL = ['/', '/captacion-vendedores.css', '/captacion-vendedores.js', '/catalogo-publico.css', '/catalogo-publico.js', '/motor-precios.js', '/cobranzas.css', '/cobranzas.js', '/manifest.webmanifest', '/icons/rest-192.png', '/icons/rest-512.png'];
 
 self.addEventListener('install', event => {

@@ -1,5 +1,5 @@
 (function(root){
- const money=n=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS'}).format(Number(n||0));
+ const money=n=>new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(n||0));
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  let key=null,busy=false,quoteSequence=0;
  async function load(){
@@ -25,7 +25,7 @@
    if(price.error||fx.error)throw price.error||fx.error;
    if(!dialog.isConnected)return;
    const q=price.data;input.value=q.costo_proveedor_usd??'';
-   dialog.querySelector('#motorCostSummary').innerHTML=`<p><b>${q.motor_version===2?'NUEVO MOTOR':'PRECIO LEGACY'}</b></p><p>Costo proveedor USD guardado: <b>${q.costo_proveedor_usd==null?'Sin cargar':esc(q.costo_proveedor_usd)}</b></p><p>Dólar REST vigente: <b>${money(fx.data.valor)}</b></p><p>Costo base ARS: <b>${q.costo_base_ars==null?'No calculado: conserva precio anterior':money(q.costo_base_ars)}</b></p><p>Contado: <b>${money(q.contado)}</b></p>${(q.credito_personal||[]).map(p=>`<p><b>${esc(p.cuotas)} cuotas de ${money(p.cuota)}</b><br>Total ${money(p.total)} · Última ${money(p.ultima_cuota)}${p.primera_cuota?' · Primera al inicio':''}</p>`).join('')}<p class="muted">Importes vigentes guardados, calculados por el motor central. Un costo escrito se aplica al guardar.</p>`;
+   dialog.querySelector('#motorCostSummary').innerHTML=`<p><b>${q.motor_version===2?'NUEVO MOTOR':'PRECIO LEGACY'}</b></p><p>Costo proveedor USD guardado: <b>${q.costo_proveedor_usd==null?'Sin cargar':esc(q.costo_proveedor_usd)}</b></p><p>Dólar REST vigente: <b>${money(fx.data.valor)}</b></p><p>Costo base ARS: <b>${q.costo_base_ars==null?'No calculado: conserva precio anterior':money(q.costo_base_ars)}</b></p><p>Contado: <b>${money(q.contado)}</b></p>${(q.credito_personal||[]).map(p=>`<p><b>${esc(p.cuotas)} cuotas de ${money(p.cuota)}</b><br>Total ${money(p.total)}${p.ultima_cuota!=null&&Number(p.ultima_cuota)!==Number(p.cuota)?` · Última ${money(p.ultima_cuota)}`:""}${p.primera_cuota?' · Primera al inicio':''}</p>`).join('')}<p class="muted">Importes vigentes guardados, calculados por el motor central. Un costo escrito se aplica al guardar.</p>`;
    save.disabled=false;
   }
   dialog.querySelector('#motorCostForm').onsubmit=async e=>{
@@ -47,8 +47,8 @@
   if(sequence!==quoteSequence||p!==selectedCatalogProduct||mode!==qMode.value||count!==qInstall.value||advance!==qAdvance.value)return true;
   if(error){qerr(error.message);return true}
   const plan={formaPago:qMode.value,count:data.count,value:data.value,frequency:data.frequency,primera_cuota:data.primera_cuota};
-  const lines=[['Total',money(data.total)]];if(data.primera_cuota)lines.push(['Primera cuota','Al inicio']);if(data.ultima_cuota!==undefined)lines.push(['Última cuota ajustada',money(data.ultima_cuota)]);
-  qshow(data.title,lines,data.total,data.count?`${data.count} cuotas · ${money(data.value)} (ver última cuota)`:null,data.down,data.paymentText,plan);return true;
+  const lines=[['Total',money(data.total)]];if(data.primera_cuota)lines.push(['Primera cuota','Al inicio']);const differentLast=data.ultima_cuota!=null&&Number(data.ultima_cuota)!==Number(data.value);if(differentLast)lines.push(['Última cuota ajustada',money(data.ultima_cuota)]);
+  qshow(data.title,lines,data.total,data.count?`${data.count} cuotas de ${money(data.value)}${differentLast?" (ver última cuota)":""}`:null,data.down,data.paymentText,plan);return true;
  }
  async function submit(){
   if(busy)return;const p=selectedCatalogProduct,q=currentQuote;

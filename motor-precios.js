@@ -50,6 +50,11 @@
   const lines=[['Total',money(data.total)]];if(data.primera_cuota)lines.push(['Primera cuota','Al inicio']);const differentLast=data.ultima_cuota!=null&&Number(data.ultima_cuota)!==Number(data.value);if(differentLast)lines.push(['Última cuota ajustada',money(data.ultima_cuota)]);
   qshow(data.title,lines,data.total,data.count?`${data.count} cuotas de ${money(data.value)}${differentLast?" (ver última cuota)":""}`:null,data.down,data.paymentText,plan);return true;
  }
+ // down is an additional advance, not installment 1. Keep it unchanged for RPCs/budgets.
+ // A first installment at inception is already included in total and comes from the official quote.
+ function initialPayment(q){
+  return q?.plan?.primera_cuota==='al_inicio'?Number(q.plan.value):Number(q?.down||0);
+ }
  async function submit(){
   if(busy)return;const p=selectedCatalogProduct,q=currentQuote;
   if(!p||!q||!['hogar','celulares'].includes(p.categoria)){smsg.textContent='Elegí un producto de Hogar o Celulares y calculá su cotización antes de enviar.';return}
@@ -59,5 +64,5 @@
   }catch(e){smsg.textContent=e.message}finally{busy=false;saleBtn.disabled=false}
  }
  function init(){const cat=document.getElementById('pcat'),input=document.getElementById('pprice');const change=()=>{input.placeholder=cat.value==='celulares'?'Costo proveedor USD (sin adicional)':'Precio contado';input.step='0.0001'};cat?.addEventListener('change',change);if(cat&&input)change();}
- root.RESTPrecios={load,cost,quote,submit,init,money};
+ root.RESTPrecios={load,cost,quote,submit,init,money,initialPayment};
 })(globalThis);

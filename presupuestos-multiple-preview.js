@@ -5,7 +5,7 @@ const admin='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',seller='bbbbbbbb-bbbb-4bbb-8b
 const phone='dddddddd-dddd-4ddd-8ddd-000000000002',home='dddddddd-dddd-4ddd-8ddd-dddddddddddd',second='dddddddd-dddd-4ddd-8ddd-000000000098';
 const rpc=async(name,args={})=>{const keys=Object.keys(args);return(await db.query(`select public.${name}(${keys.map((k,i)=>`${k}=>$${i+1}`).join(',')}) data`,Object.values(args).map(v=>v&&typeof v==='object'?JSON.stringify(v):v))).rows[0].data};
 window.sb={rpc:async(name,args)=>{try{return {data:await rpc(name,args)}}catch(error){return {error}}}};
-window.loadSellerBudgets=async()=>{const rows=(await db.query("select * from presupuestos where condiciones_snapshot->>'version'='2' order by creado_en desc")).rows;$('saved').innerHTML='';for(const r of rows){const card=document.createElement('article');card.className='card';$('saved').appendChild(card);RESTPresupuestos.showRecord(r,card)}};
+window.loadSellerBudgets=async()=>{const rows=(await db.query("select to_jsonb(p) record from presupuestos p where condiciones_snapshot->>'version'='2' order by creado_en desc")).rows.map(x=>x.record);$('saved').innerHTML='';for(const r of rows){const card=document.createElement('article');card.className='card';$('saved').appendChild(card);RESTPresupuestos.showRecord(r,card)}};
 try{
  for(const file of files)await db.exec(await(await fetch('/'+file)).text());
  await rpc('guardar_costo_producto_rest',{p_producto:phone,p_costo:420});

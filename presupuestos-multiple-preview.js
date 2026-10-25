@@ -10,8 +10,8 @@ try{
  for(const file of files)await db.exec(await(await fetch('/'+file)).text());
  await rpc('guardar_costo_producto_rest',{p_producto:phone,p_costo:420});
  await db.exec(`reset role;update productos set precio_contado=123457,nombre='TEST Sommier 140 · LEGACY' where id='${home}';insert into productos(id,nombre,categoria,precio_contado,activo,catalogo_publico) values('${second}','TEST Colchón 140 × 30 · LEGACY','hogar',223459,true,true);update vendedores set categoria_actual='experto';set role authenticated;set app.test_uid='${seller}';`);
- const products=(await db.query('select id,nombre,categoria from productos where id=any($1::uuid[]) order by nombre',[[phone,home,second]])).rows;
+ const products=(await rpc('listar_productos_comerciales')).filter(p=>[phone,home,second].includes(p.id));
  for(const p of products){const card=document.createElement('article');card.className='card';const name=document.createElement('h3');name.textContent=p.nombre;card.appendChild(name);const btn=document.createElement('button');btn.className='btn';btn.textContent='AGREGAR A PRESUPUESTO';btn.onclick=()=>RESTPresupuestos.add(p);card.appendChild(btn);$('products').appendChild(card)}
  $('status').textContent='TEST listo · UI y RPC reales · datos ficticios';
- $('evidenceBtn').onclick=async()=>{const rows=(await db.query("select v.id,v.estado,v.producto,v.monto_total,v.anticipo_esperado,p.codigo,p.condiciones_snapshot->'items' productos from ventas v join presupuestos p on p.venta_id=v.id where p.condiciones_snapshot->>'version'='2'")).rows;$('evidence').textContent=JSON.stringify(rows,null,2)};
+ $('evidenceBtn').onclick=async()=>{await db.exec('reset role');const rows=(await db.query("select v.id,v.estado,v.producto,v.monto_total,v.anticipo_esperado,p.codigo,p.condiciones_snapshot->'items' productos from ventas v join presupuestos p on p.venta_id=v.id where p.condiciones_snapshot->>'version'='2'")).rows;$('evidence').textContent=JSON.stringify(rows,null,2);await db.exec(`set role authenticated;set app.test_uid='${seller}'`)};
 }catch(e){$('status').textContent=e.message}

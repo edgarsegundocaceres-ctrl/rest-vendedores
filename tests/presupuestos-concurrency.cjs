@@ -58,14 +58,14 @@ const cases=[
  ['FX writer and reader interleavings keep one coherent version',async(o,a,b)=>{
   await a.query('begin');const r=await emit(a);const waiting=pending(call(b,'actualizar_dolar_rest',{p_valor:1600}));
   await blocked(o,b,a);await a.query('commit');await unwrap(waiting);assert.deepEqual(await snapshot(o,r.id),r.condiciones_snapshot);
-  assert.equal((await quote(a)).contado,2*430*1600*1.4);
+  assert.equal((await quote(a)).contado,1926400);
   await b.query('begin');await call(b,'actualizar_dolar_rest',{p_valor:1650});
   const read=pending(emit(a));await blocked(o,a,b);await b.query('commit');const next=await unwrap(read);
-  assert.equal(next.condiciones_snapshot.contado,2*430*1650*1.4);assert.deepEqual(await snapshot(o,r.id),r.condiciones_snapshot);
+  assert.equal(next.condiciones_snapshot.contado,1986600);assert.deepEqual(await snapshot(o,r.id),r.condiciones_snapshot);
  }],
  ['late failure rolls back sale, audit and budget status',async(o,a)=>{
   const r=await emit(a),v=await args(a,r);const before=await state(o);
-  await o.query("create function public.test_fail_multi() returns trigger language plpgsql as $$begin if new.tipo='venta_presupuesto_multiple' then if not exists(select 1 from ventas where id=new.entidad_id) then raise exception 'TEST_SETUP';end if;raise exception 'TEST_LATE_FAILURE';end if;return new;end$$;create trigger test_fail_multi before insert on private.motor_precios_auditoria for each row execute function public.test_fail_multi()");
+  await o.query("create function public.test_fail_multi() returns trigger language plpgsql as $$begin if new.tipo='venta_presupuesto_multiple' then if not exists(select 1 from public.ventas where id=new.entidad_id) then raise exception 'TEST_SETUP';end if;raise exception 'TEST_LATE_FAILURE';end if;return new;end$$;create trigger test_fail_multi before insert on private.motor_precios_auditoria for each row execute function public.test_fail_multi()");
   await assert.rejects(call(a,'convertir_presupuesto_multiple',v),/TEST_LATE_FAILURE/);assert.deepEqual(await state(o),before);
  }],
  ['backend rejects injected amounts and direct snapshot tampering',async(o,a)=>{

@@ -1,0 +1,43 @@
+name: Presupuestos REST - PostgreSQL 17 concurrency
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  concurrency:
+    if: github.repository == 'edgarsegundocaceres-ctrl/rest-vendedores' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 9)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: disposable-test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assert changes stay within approved mixed-budget scope
+        run: |
+          git diff --exit-code 5d7f4a535e3ac0de9eb12fa4202cddf062559cea HEAD -- . ':!.github/workflows/presupuestos-concurrency.yml' ':!tests/presupuestos-concurrency.cjs' ':!tests/presupuestos-multiple.cjs' ':!presupuestos-multiple.js' ':!presupuestos-multiple-preview.js' ':!docs/presupuestos-multiproducto.md' ':!supabase/migrations/20261025033232_presupuestos_multiproducto_multiopcion.sql'
+          git rev-parse HEAD
+      - name: Install test driver outside repository
+        run: npm install --prefix "$RUNNER_TEMP/pg-driver" --no-audit --no-fund pg@8.16.3
+      - name: Seven native concurrent transaction cases
+        env:
+          NODE_PATH: ${{ runner.temp }}/pg-driver/node_modules
+        run: node tests/presupuestos-concurrency.cjs

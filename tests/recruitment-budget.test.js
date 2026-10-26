@@ -179,7 +179,7 @@ test('el presupuesto conserva snapshot, vendedor y conversión posterior',()=>{
 });
 
 test('el service worker incluye los recursos nuevos y cambia la versión de caché',()=>{
-  assert.match(serviceWorker,/rest-shell-v1\.6\.4-cuotas-100/);
+  assert.match(serviceWorker,/rest-shell-v1\.7\.0-presupuestos-multiple/);
   assert.match(serviceWorker,/captacion-vendedores\.css/);
   assert.match(serviceWorker,/captacion-vendedores\.js/);
   assert.match(serviceWorker,/catalogo-publico\.css/);

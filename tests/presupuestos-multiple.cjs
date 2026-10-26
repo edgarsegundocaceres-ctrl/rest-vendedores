@@ -12,7 +12,7 @@ const item=(id,n=1)=>({producto_id:id,cantidad:n}),op=(n=0,mode=n?'Crédito pers
  const call=(name,args={})=>rpc(db,name,Object.fromEntries(Object.entries(args).map(([k,v])=>[k,v&&typeof v==='object'?JSON.stringify(v):v])));
  const role=uid=>db.exec(`reset role;set role authenticated;set app.test_uid='${uid}'`);
  await role(admin);await call('guardar_costo_producto_rest',{p_producto:phone,p_costo:420});
- await db.exec(`reset role;insert into productos(id,nombre,categoria,precio_contado,activo,catalogo_publico) values('${other}','TEST Colchón','hogar',123457,true,true),('${phone2}','TEST Segundo celular','celulares',100000,true,true); update vendedores set categoria_actual='experto';`);
+ await db.exec(`reset role;insert into productos(id,nombre,categoria,precio_contado,activo,catalogo_publico) values('${other}','TEST Colchón','hogar',123457,true,true),('${phone2}','TEST Segundo celular','celulares',100000,true,true); update productos set precio_contado=141100 where id='${home}';update vendedores set categoria_actual='experto';`);
  await role(admin);await call('guardar_costo_producto_rest',{p_producto:phone2,p_costo:301});await role(seller);
  const quote=(its,ops)=>call('cotizar_presupuesto_multiple',{p_items:its,p_opciones:ops});
  for(const ids of [[phone],[home],[phone,phone2],[home,other]])for(const n of [0,6,9]){
@@ -21,15 +21,43 @@ const item=(id,n=1)=>({producto_id:id,cantidad:n}),op=(n=0,mode=n?'Crédito pers
   assert(!JSON.stringify(q).includes('costo_proveedor'));pass(ids.length+' productos '+(ids[0]===phone?'nuevo':'legacy')+' '+n);
  }
  const mixed=await quote([item(phone),item(home)],[op()]);assert.equal(mixed.items.length,2);
- await assert.rejects(quote([item(phone),item(home)],[op(6)]),/mixto/);await assert.rejects(quote([item(phone),item(home)],[op(9)]),/mixto/);pass('mixto contado permitido; crédito 6/9 bloqueado');
+
+ assert.equal(mixed.contado,1074200);
+ for(const [n,value,total] of [[6,314700,1888200],[9,268200,2413800]]){
+  for(const ids of [[phone,home],[home,phone]]){
+   const q=(await quote(ids.map(id=>item(id)),[op(n)])).opciones[0];
+   assert.equal(q.value,value);assert.equal(q.total,total);assert.equal(q.total,q.value*n);
+   assert.equal(q.pago_inicial,value);assert.equal(q.down,0);assert.equal(q.primera_cuota,'al_inicio');
+  }
+  const separate=(await quote([item(phone)],[op(n)])).opciones[0].value+(await quote([item(home)],[op(n)])).opciones[0].value;
+  if(n===6)assert.notEqual(separate,value);
+ }
+ pass('control mixto aprobado contado/6/9, orden independiente, primera incluida y redondeo único');
+ for(const [n,total,commission] of [[6,1888200,94410],[9,2413800,120690]]){
+  const r=await call('crear_presupuesto_multiple',{p_items:[item(phone),item(home)],p_opciones:[op(n)],p_clave:crypto.randomUUID()});
+  const client=(await call('clientes_presupuesto_multiple'))[0].id;
+  const a={p_presupuesto:r.id,p_opcion:'Crédito personal:'+n,p_cliente_id:client};
+  const sale=await call('convertir_presupuesto_multiple',a);
+  assert.equal((await call('convertir_presupuesto_multiple',a)).id,sale.id);
+  await db.exec('reset role');
+  const v=(await db.query('select * from ventas where id=$1',[sale.id])).rows[0];
+  assert.equal(Number(v.monto_total),total);assert.equal(Number(v.anticipo_esperado),total/n);
+  for(const status of ['aprobada_entrega','entregada','en_cobranza'])await db.query('update ventas set estado=$1 where id=$2',[status,sale.id]);
+  const commissions=(await db.query('select importe_original from comisiones where venta_id=$1',[sale.id])).rows;
+  assert.equal(commissions.length,1);assert.equal(Number(commissions[0].importe_original),commission);
+  assert.deepEqual((await db.query('select condiciones_snapshot from presupuestos where id=$1',[r.id])).rows[0].condiciones_snapshot,r.condiciones_snapshot);
+  await role(seller);pass('control mixto '+n+' conversión única, primera incluida, snapshot y comisión '+commission);
+ }
+
+
  for(const ids of [[phone],[home],[phone,phone2],[home,other]]){const q=await quote(ids.map(id=>item(id,2)),[op(),op(6),op(9)]);assert.equal(q.opciones.length,3);assert(q.items.every(x=>x.cantidad===2));pass('multiopción y cantidades '+ids.length+' '+ids[0])}
  const indiv=(await quote([item(other)],[op(6)])).opciones[0];const combo=(await quote([item(other,2)],[op(6)])).opciones[0];assert.equal(combo.value,Math.ceil(123457*2*1.57/6/100)*100);assert.notEqual(combo.value,indiv.value*2);pass('redondeo solo al final: no suma de cuotas individuales');
- const cfg=await call('opciones_presupuesto_multiple',{p_items:[item(phone),item(home)]});assert(cfg.mixto);assert(!cfg.opciones.some(x=>x.modalidad==='Crédito personal'));
+ const cfg=await call('opciones_presupuesto_multiple',{p_items:[item(phone),item(home)]});assert(cfg.mixto);assert.equal(cfg.opciones.filter(x=>x.modalidad==='Crédito personal').length,2);
  for(const c of cfg.opciones){const q=(await quote([item(phone),item(home)],[op(c.cuotas,c.modalidad,c.anticipo_min||0)])).opciones[0];assert.equal(q.total,q.count?q.down+q.count*q.value:mixed.contado);if(c.anticipo_min){assert.equal(q.pago_inicial,c.anticipo_min);assert.equal(q.primera_cuota,null)}}pass('todas las modalidades comunes y anticipo adicional mixto');
  const q9=(await quote([item(phone)],[op(9)])).opciones[0];assert.equal(q9.value,237000);assert.equal(q9.total,2133000);assert.equal(q9.pago_inicial,237000);pass('A56 primera cuota incluida');
  for(const bad of [[{...item(phone),total:1}],[item(phone,0)],[item(phone,1.2)],[item(phone),item(phone)]])await assert.rejects(quote(bad,[op(6)]));
  await assert.rejects(quote([item(phone)],[{...op(6),value:1}]));await assert.rejects(quote([item(phone)],[op(6,'Crédito personal',237000)]));await assert.rejects(quote([item(phone)],[op(6),op(6)]));pass('manipulación, duplicados, cantidades y anticipo indebido rechazados');
- const params={p_items:[item(phone),item(phone2)],p_opciones:[op(),op(6),op(9)],p_clave:crypto.randomUUID(),p_nombre:'TEST Cliente',p_vigencia:7};
+ const params={p_items:[item(phone),item(home)],p_opciones:[op(),op(6),op(9)],p_clave:crypto.randomUUID(),p_nombre:'TEST Cliente',p_vigencia:7};
  const r=await call('crear_presupuesto_multiple',params);const again=await call('crear_presupuesto_multiple',params);assert.equal(r.id,again.id);await assert.rejects(call('crear_presupuesto_multiple',{...params,p_nombre:'Otro'}),/reutilizada/);pass('emisión idempotente');
  await role(admin);await call('guardar_costo_producto_rest',{p_producto:phone,p_costo:500});await call('actualizar_dolar_rest',{p_valor:1600});await role(seller);
  assert.deepEqual((await db.query('select condiciones_snapshot from presupuestos where id=$1',[r.id])).rows[0].condiciones_snapshot,r.condiciones_snapshot);assert.notEqual((await quote(params.p_items,[op(9)])).opciones[0].total,r.condiciones_snapshot.opciones[2].total);pass('snapshot inmutable tras cambios costo/dólar TEST');
@@ -37,7 +65,7 @@ const item=(id,n=1)=>({producto_id:id,cantidad:n}),op=(n=0,mode=n?'Crédito pers
  await assert.rejects(call('convertir_presupuesto_multiple',{...conversion,p_opcion:null}),/alternativa/);
  await assert.rejects(call('convertir_presupuesto_multiple',{...conversion,p_cliente_id:crypto.randomUUID()}),/Cliente/);
  const sale=await call('convertir_presupuesto_multiple',conversion);assert.equal((await call('convertir_presupuesto_multiple',conversion)).id,sale.id);await assert.rejects(call('convertir_presupuesto_multiple',{...conversion,p_opcion:'Contado:0'}),/ya convertido/);
- await db.exec('reset role');const v=(await db.query('select * from ventas where id=$1',[sale.id])).rows[0];const chosen=r.condiciones_snapshot.opciones[2];assert.equal(Number(v.monto_total),chosen.total);assert.equal(Number(v.anticipo_esperado),chosen.value);assert(v.producto.includes('TEST Segundo celular'));
+ await db.exec('reset role');const v=(await db.query('select * from ventas where id=$1',[sale.id])).rows[0];const chosen=r.condiciones_snapshot.opciones[2];assert.equal(Number(v.monto_total),chosen.total);assert.equal(Number(v.anticipo_esperado),chosen.value);assert(v.producto.includes(r.condiciones_snapshot.items[1].nombre));
  const audit=(await db.query("select detalle from private.motor_precios_auditoria where tipo='venta_presupuesto_multiple' and entidad_id=$1",[sale.id])).rows[0].detalle;assert.deepEqual(audit.items,r.condiciones_snapshot.items);pass('una alternativa, una venta, todos los productos, condición histórica');
  await db.query("update ventas set estado='aprobada_entrega' where id=$1",[sale.id]);await db.query("update ventas set estado='entregada' where id=$1",[sale.id]);await db.query("update ventas set estado='en_cobranza' where id=$1",[sale.id]);const com=(await db.query('select * from comisiones where venta_id=$1',[sale.id])).rows;assert.equal(com.length,1);assert.equal(Number(com[0].importe_original),chosen.total*.05);pass('comisión vigente 5%, única');
  // Force failure after sale insert: transaction must also roll back budget conversion.

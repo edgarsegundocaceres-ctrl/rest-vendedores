@@ -9,7 +9,7 @@ window.loadSellerBudgets=async()=>{const rows=(await db.query("select to_jsonb(p
 try{
  for(const file of files)await db.exec(await(await fetch('/'+file)).text());
  await rpc('guardar_costo_producto_rest',{p_producto:phone,p_costo:420});
- await db.exec(`reset role;update productos set precio_contado=123457,nombre='TEST Sommier 140 · LEGACY' where id='${home}';insert into productos(id,nombre,categoria,precio_contado,activo,catalogo_publico) values('${second}','TEST Colchón 140 × 30 · LEGACY','hogar',223459,true,true);update vendedores set categoria_actual='experto';set role authenticated;set app.test_uid='${seller}';`);
+ await db.exec(`reset role;update productos set precio_contado=141100,nombre='TEST Alacena 120 cm · LEGACY' where id='${home}';insert into productos(id,nombre,categoria,precio_contado,activo,catalogo_publico) values('${second}','TEST Colchón 140 × 30 · LEGACY','hogar',223459,true,true);update vendedores set categoria_actual='experto';set role authenticated;set app.test_uid='${seller}';`);
  const products=(await rpc('listar_productos_comerciales')).filter(p=>[phone,home,second].includes(p.id));
  for(const p of products){const card=document.createElement('article');card.className='card';const name=document.createElement('h3');name.textContent=p.nombre;card.appendChild(name);const btn=document.createElement('button');btn.className='btn';btn.textContent='AGREGAR A PRESUPUESTO';btn.onclick=()=>RESTPresupuestos.add(p);card.appendChild(btn);$('products').appendChild(card)}
  $('status').textContent='TEST listo · UI y RPC reales · datos ficticios';

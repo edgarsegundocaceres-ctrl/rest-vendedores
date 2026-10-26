@@ -143,14 +143,13 @@ begin
   else
    if n<=0 then raise exception 'Cantidad de cuotas inválida'; end if;
    if mode='Crédito personal' then
-    if mixed then raise exception 'Crédito personal mixto NUEVO MOTOR + LEGACY pendiente de definición comercial; elegí contado o presupuestos separados'; end if;
     if down<>0 then raise exception 'La primera cuota no es un anticipo adicional'; end if;
     for b in select value from jsonb_array_elements(bases) loop
      select value into plan from jsonb_array_elements(b->'base'->'credito_personal') where (value->>'cuotas')::integer=n;
      if plan is null or plan->>'total_sin_redondear' is null then raise exception 'Plan no disponible'; end if;
      raw:=raw+(plan->>'total_sin_redondear')::numeric*(b->>'cantidad')::integer;
-     initial:=coalesce(plan->>'primera_cuota'='al_inicio',false);
-     if ref_initial is not null and initial<>ref_initial then raise exception 'Condiciones de primera cuota incompatibles'; end if;ref_initial:=initial;
+     -- Approved mixed calendar: one complete installment at inception if any plan requires it.
+     initial:=initial or coalesce(plan->>'primera_cuota'='al_inicio',false);
     end loop;
     title:=format('Crédito personal · %s cuotas',n);
    elsif mode in ('Anticipo + cuotas mensuales','Anticipo + cuotas semanales') then
@@ -250,11 +249,9 @@ begin
   min_s:=min_s+(q->'semanal'->>'anticipo_min')::numeric*(item->>'cantidad')::integer;
  end loop;
  options:=jsonb_build_array(jsonb_build_object('modalidad','Contado','cuotas',0,'label','Contado'));
- if not mixed then
-  for n in select (x->>'cuotas')::integer from jsonb_array_elements(firstq->'credito_personal') x loop
+ for n in select (x->>'cuotas')::integer from jsonb_array_elements(firstq->'credito_personal') x loop
    options:=options||jsonb_build_array(jsonb_build_object('modalidad','Crédito personal','cuotas',n,'label',n||' cuotas'));
-  end loop;
- end if;
+ end loop;
  for n in select value::integer from jsonb_array_elements_text(firstq->'mensual'->'cuotas') loop
   options:=options||jsonb_build_array(jsonb_build_object('modalidad','Anticipo + cuotas mensuales','cuotas',n,'label','Anticipo + '||n||' cuotas mensuales','anticipo_min',min_m));
  end loop;

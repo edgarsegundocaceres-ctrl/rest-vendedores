@@ -29,12 +29,15 @@ RLS existente preservada. Todas las RPC validan identidad/rol; funciones privada
 
 ## Combinación de motores
 - Contado mixto: suma de contados oficiales.
-- Crédito personal mixto: BLOQUEADO. Falta definir comercialmente la condición de primera cuota y base conjunta; no se presupone ni uniforma.
+- Crédito personal mixto: AUTORIZADO 25/10/2026. Cada producto conserva su total teórico propio, se suma por cantidad y se redondea una vez al conjunto. Si cualquier plan exige primera al inicio, la cuota completa consolidada se cobra al inicio, incluida en N cuotas; anticipo adicional cero. Todos LEGACY sin primera al inicio conservan su calendario.
 - Anticipo mensual/semanal mixto: se permite únicamente cuando tasas y cantidades habilitadas coinciden; suma mínimos oficiales de cada unidad. Usa el saldo conjunto con la misma regla existente, redondeando una vez. Si las condiciones difieren, falla cerrado.
 - Sol mixto: mismo coeficiente central para contado conjunto.
 
 ## UI y compartir
 Portal → Catálogo → AGREGAR A PRESUPUESTO → cantidades/quitar → ELEGIR FORMAS DE PAGO → revisar → emitir. Una o varias de 22 alternativas actuales; importe de anticipo adicional editable, importes oficiales nunca editables. Imagen PNG y WhatsApp en texto reutilizan funciones de compartir; imagen de altura adaptable contiene TODOS los productos y opciones. Historial de vendedor y Administración entiende versión 2. No se altera presentación de presupuestos previos.
+
+## Control mixto aprobado
+A56 (USD 420, dólar 1550) + Alacena LEGACY (contado 141100): contado 1074200; base teórica 6 = 1887777 → 6 × 314700 = 1888200; base teórica 9 = 2413589 → 9 × 268200 = 2413800. Primera cuota completa incluida, sin anticipo adicional. Comisión vigente 5%: 94410 / 120690. Fixture de preview sintético equivalente.
 
 ## Conversión y límites explícitos
 Seleccionar opción aceptada y cliente existente antes de confirmar una única venta pendiente. Crear clientes nuevos continúa en el circuito existente: no se agregó alta dentro del presupuesto. El presupuesto conserva todos los productos aunque `ventas.producto` siga siendo texto; trazabilidad completa en snapshot/auditoría. La limitación previa de no generar automáticamente cuenta/cuotas al aprobar una venta directa pendiente del vendedor no se resuelve aquí. No registrar pagos desde esta función.
@@ -43,7 +46,7 @@ Se preserva la condición del presupuesto dentro de su vigencia (Argentina), inc
 
 ## Validación
 Datos ficticios exclusivamente en PostgreSQL PGlite descartable:
-- `tests/presupuestos-multiple.cjs`: 28 grupos, uno/dos productos, 1/2 unidades, nuevo/legacy, contado/6/9 y multiopción, redondeo agregado (caso distinto de suma de cuotas individuales), todas las modalidades, mixto permitido/bloqueado, primer pago, rechazo manipulación, snapshot ante cambios costo/dólar, idempotencia, opción obligatoria, una venta, comisión única, rollback forzado, anon/usuario ajeno e históricos.
+- `tests/presupuestos-multiple.cjs`: 30 grupos, uno/dos productos, 1/2 unidades, nuevo/legacy, contado/6/9 y multiopción, redondeo agregado (caso distinto de suma de cuotas individuales), todas las modalidades, mixto aprobado contado/6/9, primer pago, rechazo manipulación, snapshot ante cambios costo/dólar, idempotencia, opción obligatoria, una venta, comisión única, rollback forzado, anon/usuario ajeno e históricos.
 - `tests/presupuestos-multiple-ui.cjs`: UI real → RPC → PostgreSQL, cantidades, 22 opciones, tres seleccionadas, emisión, texto, conversión y quitar.
 - `tests/presupuestos-multiple-finance-regression.cjs`: 79 controles Fase 2 sobre esquema NUEVO.
 - Regresiones previas: PR8 cuatro recorridos, PR7 32 controles, 53 tests catálogo/captación/cobranzas.
@@ -51,6 +54,6 @@ Datos ficticios exclusivamente en PostgreSQL PGlite descartable:
 
 Comando: `PGLITE_MODULE_DIR=/ruta/absoluta/node_modules node tests/presupuestos-multiple.cjs` (PGlite y jsdom del entorno TEST).
 
-Preview: `/presupuestos-multiple-preview.html`, UI/RPC/migraciones reales con fixtures ficticios, PostgreSQL en memoria, sin Supabase. Recargar descarta datos. No reemplaza validación Auth real ni concurrencia entre conexiones nativas: pendientes antes de producción. No pruebas en WebView nativo Android/WhatsApp/Facebook.
+Preview: `/presupuestos-multiple-preview.html`, UI/RPC/migraciones reales con fixtures ficticios, PostgreSQL en memoria, sin Supabase. Recargar descarta datos. Login real ADMIN/VENDEDOR aprobado; validación integral autenticada de RPC pendiente para publicación autorizada. Concurrencia PostgreSQL 17 nativo: 7 casos, tres conexiones independientes por caso; workflow incluido. No pruebas en WebView nativo Android/WhatsApp/Facebook.
 
 No merge, no publicación productiva, no modificación de PR8, REST Motos, G-CRED, costos, dólar, comisiones ni operaciones históricas.

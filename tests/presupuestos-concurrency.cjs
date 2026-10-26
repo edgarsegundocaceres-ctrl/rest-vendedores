@@ -28,7 +28,7 @@ async function unwrap(p){const r=await p;if(r.error)throw r.error;return r.value
 const fs=require('node:fs'),path=require('node:path');
 const HOME='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const call=(c,name,args)=>rpc(c,name,Object.fromEntries(Object.entries(args).map(([k,v])=>[k,v&&typeof v==='object'?JSON.stringify(v):v])));
-const items=[{producto_id:PHONE,cantidad:2}];
+const items=[{producto_id:PHONE,cantidad:2},{producto_id:HOME,cantidad:1}];
 const options=[{modalidad:'Contado',cuotas:0},{modalidad:'Crédito personal',cuotas:6},{modalidad:'Crédito personal',cuotas:9}];
 const emit=(c,key=randomUUID())=>call(c,'crear_presupuesto_multiple',{p_items:items,p_opciones:options,p_clave:key,p_nombre:'TEST synthetic',p_vigencia:7});
 const quote=c=>call(c,'cotizar_presupuesto_multiple',{p_items:items,p_opciones:options});
@@ -58,10 +58,10 @@ const cases=[
  ['FX writer and reader interleavings keep one coherent version',async(o,a,b)=>{
   await a.query('begin');const r=await emit(a);const waiting=pending(call(b,'actualizar_dolar_rest',{p_valor:1600}));
   await blocked(o,b,a);await a.query('commit');await unwrap(waiting);assert.deepEqual(await snapshot(o,r.id),r.condiciones_snapshot);
-  assert.equal((await quote(a)).contado,1926400);
+  assert.equal((await quote(a)).contado,2067500);
   await b.query('begin');await call(b,'actualizar_dolar_rest',{p_valor:1650});
   const read=pending(emit(a));await blocked(o,a,b);await b.query('commit');const next=await unwrap(read);
-  assert.equal(next.condiciones_snapshot.contado,1986600);assert.deepEqual(await snapshot(o,r.id),r.condiciones_snapshot);
+  assert.equal(next.condiciones_snapshot.contado,2127700);assert.deepEqual(await snapshot(o,r.id),r.condiciones_snapshot);
  }],
  ['late failure rolls back sale, audit and budget status',async(o,a)=>{
   const r=await emit(a),v=await args(a,r);const before=await state(o);
@@ -101,6 +101,7 @@ const cases=[
     await root.query(`create database ${database}`);const o=await connect(database);clients.push(o);await setup(o);
     for(const file of ['20261022121122_cuotas_comerciales_multiplos_100.sql','20261025033232_presupuestos_multiproducto_multiopcion.sql'])await o.exec(fs.readFileSync(path.join(__dirname,'../supabase/migrations',file),'utf8'));
     await o.query(`set app.test_uid='${ADMIN}'`);await rpc(o,'guardar_costo_producto_rest',{p_producto:PHONE,p_costo:420});await rpc(o,'actualizar_dolar_rest',{p_valor:1550});
+    await o.query('update productos set precio_contado=141100 where id=$1',[HOME]);
     const a=await connect(database,SELLER),b=await connect(database,i===0||i===5?SELLER:ADMIN);clients.push(a,b);
     assert.equal(new Set([o.processID,a.processID,b.processID]).size,3);console.log('CASE '+(i+1)+' independent backend PIDs: '+[o.processID,a.processID,b.processID].join(','));
     await test(o,a,b);console.log('PASS '+name);

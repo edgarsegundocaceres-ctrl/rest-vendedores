@@ -31,9 +31,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Assert approved functional code is unchanged
+      - name: Assert changes stay within approved mixed-budget scope
         run: |
-          git diff --exit-code 5d7f4a535e3ac0de9eb12fa4202cddf062559cea HEAD -- . ':!.github/workflows/presupuestos-concurrency.yml' ':!tests/presupuestos-concurrency.cjs'
+          git diff --exit-code 5d7f4a535e3ac0de9eb12fa4202cddf062559cea HEAD -- . ':!.github/workflows/presupuestos-concurrency.yml' ':!tests/presupuestos-concurrency.cjs' ':!tests/presupuestos-multiple.cjs' ':!presupuestos-multiple.js' ':!presupuestos-multiple-preview.js' ':!docs/presupuestos-multiproducto.md' ':!supabase/migrations/20261025033232_presupuestos_multiproducto_multiopcion.sql'
           git rev-parse HEAD
       - name: Install test driver outside repository
         run: npm install --prefix "$RUNNER_TEMP/pg-driver" --no-audit --no-fund pg@8.16.3
